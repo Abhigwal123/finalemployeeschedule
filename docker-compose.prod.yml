@@ -12,18 +12,21 @@ services:
   # MySQL configuration is inherited from docker-compose.yml
   # It includes: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
   backend:
+    env_file:
+      - .env.prod
     environment:
       - FLASK_ENV=production
       - FLASK_HOST=0.0.0.0  # Bind to all interfaces in Docker
       - DEBUG=False
-      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change-me-in-production}
+      - SECRET_KEY=${SECRET_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       # DATABASE_URL is inherited from docker-compose.yml (includes charset=utf8mb4)
     # Remove debug port exposure in production (use nginx reverse proxy instead)
     ports: []  # Remove port exposure in production
     # Mount service account credentials (read-only)
     volumes:
       - ./service-account-creds.json:/app/service-account-creds.json:ro
+      - ./app:/app/legacy_app:ro  # Mount legacy app folder (root app/) for run_refactored.py imports
     deploy:
       resources:
         limits:
@@ -38,9 +41,15 @@ services:
         max_attempts: 3
 
   celery-worker:
+    env_file:
+      - .env.prod
     environment:
       - FLASK_ENV=production
       - DEBUG=False
+    volumes:
+      - ./service-account-creds.json:/app/service-account-creds.json:ro
+      - ./app:/app/legacy_app:ro  # Mount legacy app folder (root app/) for run_refactored.py imports
+      - ./app:/root/app:ro  # Also mount at /root/app for import path resolution
     deploy:
       resources:
         limits:
@@ -55,9 +64,14 @@ services:
         max_attempts: 3
 
   celery-beat:
+    env_file:
+      - .env.prod
     environment:
       - FLASK_ENV=production
       - DEBUG=False
+    volumes:
+      - ./app:/app/legacy_app:ro  # Mount legacy app folder (root app/) for run_refactored.py imports
+      - ./app:/root/app:ro  # Also mount at /root/app for import path resolution
     deploy:
       resources:
         limits:

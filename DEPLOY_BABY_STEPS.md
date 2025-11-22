@@ -84,7 +84,8 @@ git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git .
 cd /path/to/Project_Up
 
 # Upload entire project (excluding venv, node_modules)
-scp -r backend frontend app docker-compose.yml docker-compose.prod.yml requirements.txt run_refactored.py ubuntu@YOUR_SERVER_IP:/opt/Project_Up/
+# Note: run_refactored.py is now in backend/ directory
+scp -r backend frontend app docker-compose.yml docker-compose.prod.yml requirements.txt .env.prod ubuntu@YOUR_SERVER_IP:/opt/Project_Up/
 ```
 
 **Or create a zip and upload:**

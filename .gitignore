@@ -34,6 +34,7 @@ ENV/
 instance/
 backend/instance/
 .env
+.env.prod
 *.db
 *.sqlite3
 

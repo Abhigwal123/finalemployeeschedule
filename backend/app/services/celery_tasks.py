@@ -73,6 +73,12 @@ def bind_celery(celery_app):
             # Point 'app' to phase1 during import
             sys.modules['app'] = sys.modules[phase1_pkg_name]
 
+            # Add backend to sys.path to import run_refactored (now in backend/)
+            backend_dir = repo_root / "backend"
+            backend_dir_str = str(backend_dir)
+            if backend_dir_str not in sys.path:
+                sys.path.insert(0, backend_dir_str)
+
             mod = importlib.import_module("run_refactored")
             run_schedule_task = getattr(mod, "run_schedule_task")
 

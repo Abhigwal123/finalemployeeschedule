@@ -38,14 +38,18 @@ logger.info(f"[INTEGRATION] ✅ Project root added to sys.path - 'from app.*' im
 
 # Now import with explicit error handling - DO NOT hide ImportError
 try:
-    # Import run_refactored from project root
-    logger.info(f"[INTEGRATION] Attempting to import run_refactored from project root...")
+    # Import run_refactored from backend (file has been moved to backend/)
+    logger.info(f"[INTEGRATION] Attempting to import run_refactored from backend...")
+    # Add backend to sys.path if not already there (for importing backend.run_refactored)
+    backend_dir_str = str(backend_dir)
+    if backend_dir_str not in sys.path:
+        sys.path.insert(0, backend_dir_str)
     from run_refactored import run_schedule_task
-    logger.info(f"[INTEGRATION] ✅ Successfully imported run_schedule_task from run_refactored")
+    logger.info(f"[INTEGRATION] ✅ Successfully imported run_schedule_task from backend.run_refactored")
 except ImportError as e:
     logger.error(f"[INTEGRATION] ❌ FAILED to import run_refactored: {e}")
     logger.error(f"[INTEGRATION] Current sys.path: {sys.path[:5]}")
-    raise ImportError(f"Cannot import run_refactored. Project root: {project_root_str}, Error: {e}")
+    raise ImportError(f"Cannot import run_refactored from backend. Backend dir: {backend_dir_str}, Error: {e}")
 
 try:
     # Import legacy app modules

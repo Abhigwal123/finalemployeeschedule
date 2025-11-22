@@ -97,3 +97,4 @@ if __name__ == '__main__':
     success = trigger_sync()
     sys.exit(0 if success else 1)
 
+

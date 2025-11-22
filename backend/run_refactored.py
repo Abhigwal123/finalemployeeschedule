@@ -15,8 +15,11 @@ from typing import Dict, Any, Optional
 # 🔧 CRITICAL: Setup Python path BEFORE importing app.* modules
 # For "from app.data_provider import ..." to work, we need the PROJECT ROOT in sys.path
 # NOT the app directory itself (that would break package imports)
-script_dir = os.path.dirname(os.path.abspath(__file__))  # This IS the project root
-app_dir = os.path.abspath(os.path.join(script_dir, "app"))
+# NOTE: This file is now in backend/, so script_dir is backend/, and project_root is parent of backend/
+script_dir = os.path.dirname(os.path.abspath(__file__))  # This IS the backend directory
+project_root = os.path.dirname(script_dir)  # Project root (parent of backend/)
+app_dir = os.path.abspath(os.path.join(project_root, "app"))
+backend_dir = script_dir  # We're now inside backend/
 
 # CRITICAL: Remove app_dir from sys.path if it exists (it breaks package imports)
 # Something else might have added it (e.g., Google Sheets service loader)
@@ -25,21 +28,21 @@ if app_dir in sys.path:
 
 # CRITICAL: Remove backend from sys.path temporarily to avoid namespace conflict
 # When both project root and backend are in sys.path, Python might import backend/app instead of root app
-backend_dir = os.path.join(script_dir, "backend")
 backend_in_path = backend_dir in sys.path
 if backend_in_path:
     sys.path.remove(backend_dir)
 
 # Add project root to sys.path FIRST (this allows "from app.*" imports)
 # DO NOT add app_dir to sys.path - that breaks package imports!
-if script_dir not in sys.path:
-    sys.path.insert(0, script_dir)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 # Log path setup for debugging
 import logging
 logging.basicConfig(level=logging.INFO)
 _path_logger = logging.getLogger(__name__)
-_path_logger.info(f"[RUN_REFACTORED] Project root (script dir): {script_dir}")
+_path_logger.info(f"[RUN_REFACTORED] Script dir (backend): {script_dir}")
+_path_logger.info(f"[RUN_REFACTORED] Project root: {project_root}")
 _path_logger.info(f"[RUN_REFACTORED] App package location: {app_dir}")
 if app_dir in sys.path:
     _path_logger.warning(f"[RUN_REFACTORED] ⚠️ App dir was in sys.path - REMOVED to fix package imports")
@@ -51,7 +54,8 @@ _path_logger.info(f"[RUN_REFACTORED] ✅ Project root in sys.path - 'from app.*'
 # Default configuration - URLs are preset in the file
 DEFAULT_INPUT_SHEET_URL = "https://docs.google.com/spreadsheets/d/1hEr8XD3ThVQQAFWi-Q0owRYxYnBRkwyqiOdbmp6zafg/edit?gid=0#gid=0"
 DEFAULT_OUTPUT_SHEET_URL = "https://docs.google.com/spreadsheets/d/16K1AyhmOWWW1pDbWEIOyNB5td32sXxqsKCyO06pjUSw/edit?gid=0#gid=0"
-DEFAULT_CREDENTIALS_PATH = os.path.join(script_dir, "service-account-creds.json")
+# Credentials are in project root, not backend/
+DEFAULT_CREDENTIALS_PATH = os.path.join(project_root, "service-account-creds.json")
 os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", DEFAULT_CREDENTIALS_PATH)
 
 # Import our refactored modules - Use absolute imports
@@ -62,7 +66,7 @@ _path_logger.info(f"[RUN_REFACTORED] Attempting to import app.* modules...")
 # Check if 'app' is already in sys.modules and verify it's the root app
 # IMPORTANT: We need to handle the case where backend/app is already imported
 # We should NOT delete backend/app modules as they are needed by the backend
-backend_app_path = os.path.join(script_dir, 'backend', 'app')
+backend_app_path = os.path.join(backend_dir, 'app')
 backend_app_init = os.path.join(backend_app_path, '__init__.py')
 
 if 'app' in sys.modules:
@@ -272,8 +276,8 @@ def run_schedule_task(
     """
     
     # Setup logging with file handler
-    # Ensure logs directory exists
-    log_dir = os.path.join(os.path.dirname(__file__), "logs")
+    # Ensure logs directory exists (use backend/logs since we're in backend/)
+    log_dir = os.path.join(script_dir, "logs")
     os.makedirs(log_dir, exist_ok=True)
     
     log_file = os.path.join(log_dir, "system.log")
@@ -633,3 +637,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

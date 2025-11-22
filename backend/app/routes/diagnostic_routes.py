@@ -173,3 +173,4 @@ def check_user_schedule(employee_id):
         logger.error(f"Check user schedule error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
+

@@ -50,6 +50,8 @@ services:
     container_name: scheduling-backend
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       - FLASK_ENV=production
       - FLASK_HOST=0.0.0.0  # Bind to all interfaces in Docker
@@ -62,8 +64,7 @@ services:
       - BACKEND_CORS_ORIGINS=http://localhost:80,http://localhost,http://localhost:5173,http://localhost:5174,http://127.0.0.1:80,http://127.0.0.1:5173,http://127.0.0.1:5174
     volumes:
       - ./service-account-creds.json:/app/service-account-creds.json:ro
-      - ./app:/app/legacy_app:ro  # Mount legacy app folder if needed by run_refactored.py
-      - ./run_refactored.py:/app/run_refactored.py:ro  # Mount run_refactored.py
+      - ./app:/app/legacy_app:ro  # Mount legacy app folder (root app/) for run_refactored.py imports
     depends_on:
       mysql:
         condition: service_healthy
@@ -94,9 +95,8 @@ services:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/service-account-creds.json
     volumes:
       - ./service-account-creds.json:/app/service-account-creds.json:ro
-      - ./app:/app/legacy_app:ro  # Mount legacy app folder if needed by run_refactored.py
+      - ./app:/app/legacy_app:ro  # Mount legacy app folder (root app/) for run_refactored.py imports
       - ./app:/root/app:ro  # Also mount at /root/app for import path resolution
-      - ./run_refactored.py:/app/run_refactored.py:ro  # Mount run_refactored.py
     depends_on:
       - mysql
       - redis
@@ -118,9 +118,8 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
     volumes:
-      - ./app:/app/legacy_app:ro  # Mount legacy app folder if needed
+      - ./app:/app/legacy_app:ro  # Mount legacy app folder (root app/) for run_refactored.py imports
       - ./app:/root/app:ro  # Also mount at /root/app for import path resolution
-      - ./run_refactored.py:/app/run_refactored.py:ro  # Mount run_refactored.py
     depends_on:
       - mysql
       - redis
