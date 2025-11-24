@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Import trace logger
 try:
-    from app.utils.trace_logger import trace_log, trace_import_success, trace_import_failure
+    from backend.app.utils.trace_logger import trace_log, trace_import_success, trace_import_failure
 except ImportError:
     # Fallback if trace logger not available
     def trace_log(stage, filename, detail, extra=None):

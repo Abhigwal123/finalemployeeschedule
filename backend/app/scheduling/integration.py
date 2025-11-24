@@ -48,10 +48,11 @@ if app_dir_str not in sys.path:
 
 # Log path setup for debugging
 logger = logging.getLogger(__name__)
-    logger.info(f"[INTEGRATION] Project root: {project_root_str}")
-    logger.info(f"[INTEGRATION] Legacy app package location: {app_dir_str}")
-    logger.info(f"[INTEGRATION] sys.path[0:3]: {sys.path[0:3]}")
-    logger.info(f"[INTEGRATION] ✅ Legacy app added to sys.path - 'from legacy_app.*' imports should work")
+project_root_str = str(project_root)
+logger.info(f"[INTEGRATION] Project root: {project_root_str}")
+logger.info(f"[INTEGRATION] Legacy app package location: {app_dir_str}")
+logger.info(f"[INTEGRATION] sys.path[0:3]: {sys.path[0:3]}")
+logger.info(f"[INTEGRATION] ✅ Legacy app added to sys.path - 'from legacy_app.*' imports should work")
 
 # Now import with explicit error handling - DO NOT hide ImportError
 try:

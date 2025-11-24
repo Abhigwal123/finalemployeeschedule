@@ -18,24 +18,22 @@ COPY requirements_flask.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements_flask.txt
 
-# Copy application code (excludes files in .dockerignore)
-COPY . .
+# Copy backend application code (excludes files in .dockerignore)
+# This copies backend/ to /app/backend/ in the container
+COPY . /app/backend
 
-# Make backend and legacy_app folders discoverable
-ENV PYTHONPATH="/app/backend:/app/legacy_app:${PYTHONPATH}"
-
-# Create symlink so import app.* still resolves to backend app for backward compatibility
-RUN ln -s /app/backend/app /app/app || true
+# Set PYTHONPATH to allow:
+# - /app/backend for "from backend.app import ..." and "from backend import ..."
+# - /app/legacy_app for "from app import ..." (root app folder, mounted as volume)
+# - /app for project root access
+ENV PYTHONPATH="/app/backend:/app/legacy_app:/app"
 
 # Create logs directory
-RUN mkdir -p /app/logs
+RUN mkdir -p /app/logs /app/instance
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
-
-# Create instance directory for SQLite databases
-RUN mkdir -p /app/instance
 
 # Expose port
 EXPOSE 8000
@@ -44,5 +42,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')" || exit 1
 
-# Default command
+# Default command - run from backend directory
+WORKDIR /app/backend
 CMD ["python", "main.py", "--host", "0.0.0.0", "--port", "8000"]

@@ -20,7 +20,7 @@ services:
       - DEBUG=False
       - SECRET_KEY=${SECRET_KEY}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - PYTHONPATH=/app/backend:/app/legacy_app
+      - PYTHONPATH=/app/backend:/app/legacy_app:/app
       # DATABASE_URL is inherited from docker-compose.yml (includes charset=utf8mb4)
     # Remove debug port exposure in production (use nginx reverse proxy instead)
     ports: []  # Remove port exposure in production
@@ -48,7 +48,7 @@ services:
     environment:
       - FLASK_ENV=production
       - DEBUG=False
-      - PYTHONPATH=/app/backend:/app/legacy_app
+      - PYTHONPATH=/app/backend:/app/legacy_app:/app
     volumes:
       - ./service-account-creds.json:/app/service-account-creds.json:ro
       - ./app:/app/legacy_app:ro
@@ -72,7 +72,7 @@ services:
     environment:
       - FLASK_ENV=production
       - DEBUG=False
-      - PYTHONPATH=/app/backend:/app/legacy_app
+      - PYTHONPATH=/app/backend:/app/legacy_app:/app
     volumes:
       - ./service-account-creds.json:/app/service-account-creds.json:ro
       - ./app:/app/legacy_app:ro

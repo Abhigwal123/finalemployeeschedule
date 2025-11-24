@@ -60,7 +60,7 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change-me-in-production}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/service-account-creds.json
       - BACKEND_CORS_ORIGINS=http://localhost:80,http://localhost,http://localhost:5173,http://localhost:5174,http://127.0.0.1:80,http://127.0.0.1:5173,http://127.0.0.1:5174
-      - PYTHONPATH=/app/backend:/app/legacy_app
+      - PYTHONPATH=/app/backend:/app/legacy_app:/app
     volumes:
       - ./service-account-creds.json:/app/service-account-creds.json:ro
       - ./app:/app/legacy_app:ro
@@ -93,7 +93,7 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - GOOGLE_APPLICATION_CREDENTIALS=/app/service-account-creds.json
-      - PYTHONPATH=/app/backend:/app/legacy_app
+      - PYTHONPATH=/app/backend:/app/legacy_app:/app
     volumes:
       - ./service-account-creds.json:/app/service-account-creds.json:ro
       - ./app:/app/legacy_app:ro
@@ -118,7 +118,7 @@ services:
       - DATABASE_URL=mysql+pymysql://${MYSQL_USER:-scheduling_user}:${MYSQL_PASSWORD:-scheduling_password}@mysql:3306/${MYSQL_DATABASE:-scheduling_system}?charset=utf8mb4
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
-      - PYTHONPATH=/app/backend:/app/legacy_app
+      - PYTHONPATH=/app/backend:/app/legacy_app:/app
     volumes:
       - ./service-account-creds.json:/app/service-account-creds.json:ro
       - ./app:/app/legacy_app:ro
