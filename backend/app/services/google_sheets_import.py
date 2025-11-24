@@ -190,28 +190,18 @@ def _try_import_google_sheets(force_retry: bool = False) -> Tuple[bool, Optional
     logger.info(f"Project root: {project_root}")
     logger.info(f"Project root normalized: {os.path.normpath(project_root)}")
     
-    # Path to check - try multiple locations
-    # In Docker: backend is at /app/, so project_root is /app/, but legacy_app is mounted at /app/legacy_app
-    # Also check /root/app/ in case it's mounted there
-    backend_path = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))  # /app/ (backend dir in container)
+    # Path to check - Refactor is now in backend/refactor
+    backend_path = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))  # backend/ directory
     
     # Log all paths we'll try
-    # Priority: legacy_app (Docker) first, then app (local dev)
+        # Priority: backend/refactor (current location)
     paths_to_try = [
-        # Docker: legacy_app mount path (highest priority)
-        os.path.join(backend_path, 'legacy_app', 'services', 'google_sheets', 'service.py'),
-        # Docker: alternative mount at /app/legacy_app
-        '/app/legacy_app/services/google_sheets/service.py',
-        # Standard project root path with legacy_app (works in local development if renamed)
-        os.path.join(project_root, 'legacy_app', 'services', 'google_sheets', 'service.py'),
-        # Standard project root path (works in local development)
-        os.path.join(project_root, 'app', 'services', 'google_sheets', 'service.py'),
-        # Docker: alternative mount at /root/app/
-        '/root/app/services/google_sheets/service.py',
-        # Alternative project root (one level up)
-        os.path.join(os.path.dirname(project_root), 'app', 'services', 'google_sheets', 'service.py'),
-        # Check if app folder exists at backend level (fallback)
-        os.path.join(backend_path, 'app', 'services', 'google_sheets', 'service.py'),
+        # Standard location: backend/refactor/services/google_sheets/service.py
+        os.path.join(backend_path, 'refactor', 'services', 'google_sheets', 'service.py'),
+        # Docker: alternative path
+        '/app/backend/refactor/services/google_sheets/service.py',
+        # Fallback: check if it's at project root level (old location)
+        os.path.join(project_root, 'refactor', 'services', 'google_sheets', 'service.py'),
     ]
     
     # Filter out paths that are clearly wrong (same path repeated)
@@ -241,24 +231,16 @@ def _try_import_google_sheets(force_retry: bool = False) -> Tuple[bool, Optional
     
     trace_log('Import', 'google_sheets_import.py', f'Checking path: {target_path} (exists: {path_exists})')
     
-    # If we found a valid path, update project_root to point to its parent directory
+    # If we found a valid path, update backend_path to point to backend directory
     if target_path and path_exists:
-        # Extract the project root from the found path
-        # e.g., /app/legacy_app/services/google_sheets/service.py -> /app/legacy_app
-        # or /root/app/services/google_sheets/service.py -> /root/app
+        # Extract the backend path from the found path
+        # e.g., /app/backend/refactor/services/google_sheets/service.py -> /app/backend
         path_parts = target_path.split(os.sep)
-        if 'legacy_app' in path_parts:
-            legacy_app_idx = path_parts.index('legacy_app')
-            project_root = os.sep.join(path_parts[:legacy_app_idx + 1])
-            logger.info(f"Updated project_root to: {project_root} (based on legacy_app mount)")
-        elif '/root/app' in target_path or target_path.startswith('/root/app'):
-            project_root = '/root/app'
-            logger.info(f"Updated project_root to: {project_root} (based on /root/app mount)")
-        elif 'app' in path_parts and path_parts.index('app') > 0:
-            app_idx = path_parts.index('app')
-            project_root = os.sep.join(path_parts[:app_idx + 1])
-            logger.info(f"Updated project_root to: {project_root} (based on app folder)")
-        # Keep original project_root if path structure doesn't match expected patterns
+        if 'refactor' in path_parts:
+            refactor_idx = path_parts.index('refactor')
+            backend_path = os.sep.join(path_parts[:refactor_idx])
+            logger.info(f"Updated backend_path to: {backend_path} (based on refactor folder location)")
+        # Keep original backend_path if path structure doesn't match expected patterns
     
     logger.info("All paths checked:")
     for idx, p in enumerate(paths_to_try, 1):
@@ -268,65 +250,59 @@ def _try_import_google_sheets(force_retry: bool = False) -> Tuple[bool, Optional
     
     # Import strategy 1: Direct import with project root in path
     try:
-        logger.info("Attempt 1: Direct import from app.services.google_sheets.service")
-        trace_log('Import', 'google_sheets_import.py', 'Attempt 1: Direct import from app.services.google_sheets.service')
+        logger.info("Attempt 1: Direct import from refactor.services.google_sheets.service")
+        trace_log('Import', 'google_sheets_import.py', 'Attempt 1: Direct import from refactor.services.google_sheets.service')
         
-        # Ensure project_root is in sys.path (normalize both for comparison)
+        # Ensure backend_path is in sys.path (normalize both for comparison)
         normalized_paths = [os.path.normpath(p) for p in sys.path]
-        normalized_project_root = os.path.normpath(project_root)
+        normalized_backend_path = os.path.normpath(backend_path)
         
-        if normalized_project_root not in normalized_paths:
-            sys.path.insert(0, project_root)
-            logger.info(f"Added to sys.path: {project_root}")
+        if normalized_backend_path not in normalized_paths:
+            sys.path.insert(0, backend_path)
+            logger.info(f"Added to sys.path: {backend_path}")
         else:
             # Move to front if it's not first
-            idx = normalized_paths.index(normalized_project_root)
+            idx = normalized_paths.index(normalized_backend_path)
             if idx > 0:
                 sys.path.insert(0, sys.path.pop(idx))
-                logger.info(f"Moved project_root from position {idx} to position 0")
+                logger.info(f"Moved backend_path from position {idx} to position 0")
         
         # Verify path is actually in sys.path
         logger.info(f"Current sys.path[0]: {sys.path[0]}")
         logger.info(f"Normalized sys.path[0]: {os.path.normpath(sys.path[0])}")
-        logger.info(f"Project root normalized: {normalized_project_root}")
-        logger.info(f"Match: {os.path.normpath(sys.path[0]) == normalized_project_root}")
+        logger.info(f"Backend path normalized: {normalized_backend_path}")
+        logger.info(f"Match: {os.path.normpath(sys.path[0]) == normalized_backend_path}")
         
-        # Verify the app package directory exists
-        app_dir_check = os.path.join(project_root, 'app')
-        logger.info(f"app directory exists: {os.path.exists(app_dir_check)}")
-        logger.info(f"app directory path: {app_dir_check}")
+        # Verify the refactor package directory exists
+        refactor_dir_check = os.path.join(backend_path, 'refactor')
+        logger.info(f"refactor directory exists: {os.path.exists(refactor_dir_check)}")
+        logger.info(f"refactor directory path: {refactor_dir_check}")
         
         # Verify __init__.py files exist
-        app_init = os.path.join(project_root, 'app', '__init__.py')
-        services_init = os.path.join(project_root, 'app', 'services', '__init__.py')
-        sheets_init = os.path.join(project_root, 'app', 'services', 'google_sheets', '__init__.py')
+        refactor_init = os.path.join(backend_path, 'refactor', '__init__.py')
+        services_init = os.path.join(backend_path, 'refactor', 'services', '__init__.py')
+        sheets_init = os.path.join(backend_path, 'refactor', 'services', 'google_sheets', '__init__.py')
         
-        logger.info(f"app/__init__.py exists: {os.path.exists(app_init)}")
-        logger.info(f"app/services/__init__.py exists: {os.path.exists(services_init)}")
-        logger.info(f"app/services/google_sheets/__init__.py exists: {os.path.exists(sheets_init)}")
+        logger.info(f"refactor/__init__.py exists: {os.path.exists(refactor_init)}")
+        logger.info(f"refactor/services/__init__.py exists: {os.path.exists(services_init)}")
+        logger.info(f"refactor/services/google_sheets/__init__.py exists: {os.path.exists(sheets_init)}")
         
-        # Use regular import - project_root is now in sys.path
+        # Use regular import - backend_path is now in sys.path
         # This is the cleanest approach and will work if the path is correct
-        logger.info("Attempting regular import with project_root in sys.path")
+        logger.info("Attempting regular import with backend_path in sys.path")
         
-        # Double-check project_root is first in path
-        if sys.path[0] != project_root:
-            sys.path.insert(0, project_root)
-            logger.info(f"Moved project_root to first position in sys.path")
+        # Double-check backend_path is first in path
+        if sys.path[0] != backend_path:
+            sys.path.insert(0, backend_path)
+            logger.info(f"Moved backend_path to first position in sys.path")
         
         # Use importlib to load directly from file - bypasses Python's module resolution
-        # This avoids conflicts with backend/app/ directory
-        # Use the target_path we found earlier, or construct from legacy_app/project_root
+        # Use the target_path we found earlier, or construct from backend/refactor
         if target_path and path_exists:
             service_file_path = target_path
         else:
-            # Try legacy_app path first (Docker)
-            legacy_path = os.path.join(backend_path, 'legacy_app', 'services', 'google_sheets', 'service.py')
-            if os.path.exists(legacy_path):
-                service_file_path = legacy_path
-            else:
-                # Fall back to standard path (local dev)
-                service_file_path = os.path.join(project_root, 'app', 'services', 'google_sheets', 'service.py')
+            # Fall back to standard path: backend/refactor/services/google_sheets/service.py
+            service_file_path = os.path.join(backend_path, 'refactor', 'services', 'google_sheets', 'service.py')
         
         logger.info(f"Loading module directly from file: {service_file_path}")
         
@@ -340,13 +316,9 @@ def _try_import_google_sheets(force_retry: bool = False) -> Tuple[bool, Optional
             
             # Create a module object
             import types
-            # Use legacy_app package name if path contains legacy_app, otherwise use app
-            if 'legacy_app' in service_file_path:
-                module_name = "legacy_app.services.google_sheets.service"
-                module_package = "legacy_app.services.google_sheets"
-            else:
-                module_name = "app.services.google_sheets.service"
-                module_package = "app.services.google_sheets"
+            # Use refactor package name (now in backend/refactor)
+            module_name = "refactor.services.google_sheets.service"
+            module_package = "refactor.services.google_sheets"
             module = types.ModuleType(module_name)
             module.__file__ = service_file_path
             module.__package__ = module_package
@@ -390,15 +362,15 @@ def _try_import_google_sheets(force_retry: bool = False) -> Tuple[bool, Optional
             
             # Temporarily add parent modules to sys.modules
             parent_modules = [
-                'app',
-                'app.services',
-                'app.services.google_sheets'
+                'refactor',
+                'refactor.services',
+                'refactor.services.google_sheets'
             ]
             
             for mod_name in parent_modules:
                 if mod_name not in sys.modules:
                     fake_module = types.ModuleType(mod_name)
-                    mod_path = os.path.join(project_root, *mod_name.split('.'))
+                    mod_path = os.path.join(backend_path, *mod_name.split('.'))
                     if os.path.isdir(mod_path):
                         fake_module.__path__ = [mod_path]
                         fake_module.__file__ = os.path.join(mod_path, '__init__.py')
@@ -406,7 +378,7 @@ def _try_import_google_sheets(force_retry: bool = False) -> Tuple[bool, Optional
                     logger.info(f"Created parent module: {mod_name}")
             
             # Add module to sys.modules before execution
-            sys.modules["app.services.google_sheets.service"] = module
+            sys.modules["refactor.services.google_sheets.service"] = module
             
             # CRITICAL: Also add __builtins__ to ensure built-in functions are available
             # This prevents any issues with built-in functions during execution
@@ -525,8 +497,8 @@ def _try_import_google_sheets(force_retry: bool = False) -> Tuple[bool, Optional
             exec_namespace['os'] = os_module  # Ensure os is always available
             
             # Also ensure module metadata is set
-            exec_namespace['__name__'] = 'app.services.google_sheets.service'
-            exec_namespace['__package__'] = 'app.services.google_sheets'
+            exec_namespace['__name__'] = 'refactor.services.google_sheets.service'
+            exec_namespace['__package__'] = 'refactor.services.google_sheets'
             
             # CRITICAL: Add os to __builtins__ as well to ensure it's always accessible
             # This prevents UnboundLocalError by making os available at all scopes
@@ -709,10 +681,10 @@ if 'os' not in globals():
                     module.__dict__['os'] = os_module
                     logger.info(f"Ensured os is available in {module_name} after import")
         
-        logger.info("✅ Google Sheets service loaded successfully from: app.services.google_sheets.service")
-        logger.info(f"✅ Import path: {project_root}")
+        logger.info("✅ Google Sheets service loaded successfully from: refactor.services.google_sheets.service")
+        logger.info(f"✅ Import path: {backend_path}")
         logger.info("=" * 80)
-        trace_import_success('app.services.google_sheets.service', project_root)
+        trace_import_success('refactor.services.google_sheets.service', backend_path)
         
         # Verify imports are actually available
         if fetch_schedule_data is None or GoogleSheetsService is None:
@@ -721,7 +693,7 @@ if 'os' not in globals():
             return False, "Import succeeded but modules are None"
         
         logger.info(f"[TRACE] ✅ Verified imports - fetch_schedule_data: {fetch_schedule_data is not None}, GoogleSheetsService: {GoogleSheetsService is not None}")
-        return True, project_root
+        return True, backend_path
         
     except ImportError as e1:
         _last_import_error = str(e1)
@@ -740,7 +712,7 @@ if 'os' not in globals():
             if project_root not in sys.path:
                 sys.path.insert(0, project_root)
             
-            from app.services.google_sheets.service import (
+            from refactor.services.google_sheets.service import (
                 fetch_schedule_data as _fetch,
                 GoogleSheetsService as _GS,
                 list_sheets as _list,
@@ -757,7 +729,7 @@ if 'os' not in globals():
             
             logger.info("✅ Google Sheets service loaded successfully (attempt 2)")
             logger.info("=" * 80)
-            return True, project_root
+            return True, backend_path
             
     except ImportError as e2:
         _last_import_error = str(e2)
@@ -765,18 +737,17 @@ if 'os' not in globals():
         import traceback
         logger.error(f"Import error traceback:\n{traceback.format_exc()}")
     
-    # Import strategy 3: Try importing from parent directory
+    # Import strategy 3: Try importing from backend/refactor
     try:
-        logger.info("Attempt 3: Checking parent directory")
-        parent_dir = os.path.dirname(project_root)
-        parent_target = os.path.join(parent_dir, 'app', 'services', 'google_sheets', 'service.py')
+        logger.info("Attempt 3: Checking backend/refactor directory")
+        refactor_target = os.path.join(backend_path, 'refactor', 'services', 'google_sheets', 'service.py')
         
-        if os.path.exists(parent_target):
-            logger.info(f"Found in parent: {parent_target}")
-            if parent_dir not in sys.path:
-                sys.path.insert(0, parent_dir)
+        if os.path.exists(refactor_target):
+            logger.info(f"Found in backend/refactor: {refactor_target}")
+            if backend_path not in sys.path:
+                sys.path.insert(0, backend_path)
             
-            from app.services.google_sheets.service import (
+            from refactor.services.google_sheets.service import (
                 fetch_schedule_data as _fetch,
                 GoogleSheetsService as _GS,
                 list_sheets as _list,
@@ -793,7 +764,7 @@ if 'os' not in globals():
             
             logger.info("✅ Google Sheets service loaded successfully (attempt 3)")
             logger.info("=" * 80)
-            return True, parent_dir
+            return True, backend_path
             
     except ImportError as e3:
         _last_import_error = str(e3)

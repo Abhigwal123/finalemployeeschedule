@@ -9,9 +9,10 @@ import traceback
 from datetime import datetime
 from typing import Dict, Any, Optional
 from celery import current_task
-from sqlalchemy.orm import Session
-from ..database.connection import SessionLocal
-from ..models.schedule_task import ScheduleTask
+from flask import current_app
+
+from ..extensions import db
+from app.models.schedule_task import ScheduleTask
 
 # Get Google credentials from environment
 GOOGLE_CREDENTIALS_FILE = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "service-account-creds.json")
@@ -27,7 +28,7 @@ except ImportError:
     def run_scheduling_task_saas(*args, **kwargs):
         return {"error": "Scheduling integration not available"}
 
-from .celery_app import celery_app
+from app.celery_app import celery as celery_app
 
 
 def update_task_status(
@@ -41,9 +42,9 @@ def update_task_status(
     output_sheet_url: str = None
 ):
     """Update task status in database"""
-    db = SessionLocal()
+    session = db.session
     try:
-        task = db.query(ScheduleTask).filter(ScheduleTask.task_id == task_id).first()
+        task = session.query(ScheduleTask).filter(ScheduleTask.task_id == task_id).first()
         if task:
             task.status = status
             if progress is not None:
@@ -64,12 +65,10 @@ def update_task_status(
             elif status in ["success", "failed", "cancelled"]:
                 task.completed_at = datetime.utcnow()
             
-            db.commit()
+            session.commit()
     except Exception as e:
-        db.rollback()
+        session.rollback()
         print(f"Error updating task status: {e}")
-    finally:
-        db.close()
 
 
 @celery_app.task(bind=True, name="app.tasks.schedule.process_schedule_task")
@@ -88,118 +87,109 @@ def process_schedule_task(
     """
     Process schedule task using the original scheduling logic
     """
-    try:
-        # Update task status to running
-        update_task_status(task_id, "running", progress=0)
-        
-        # Update progress
-        current_task.update_state(state="PROGRESS", meta={"progress": 10})
-        update_task_status(task_id, "running", progress=10)
-        
-        # Prepare input configuration
-        if input_source == "excel":
-            input_config_processed = {
-                "file_path": input_config.get("file_path")
-            }
-        elif input_source == "google_sheets":
-            input_config_processed = {
-                "spreadsheet_url": input_config.get("spreadsheet_url"),
-                "credentials_path": input_config.get("credentials_path", GOOGLE_CREDENTIALS_FILE)
-            }
-        else:
-            raise ValueError(f"Unsupported input source: {input_source}")
-        
-        # Update progress
-        current_task.update_state(state="PROGRESS", meta={"progress": 20})
-        update_task_status(task_id, "running", progress=20)
-        
-        # Prepare output configuration
-        if output_destination == "excel":
-            output_config_processed = {
-                "output_path": output_config.get("output_path")
-            }
-        elif output_destination == "google_sheets":
-            output_config_processed = {
-                "spreadsheet_url": output_config.get("spreadsheet_url"),
-                "credentials_path": output_config.get("credentials_path", GOOGLE_CREDENTIALS_FILE)
-            }
-        else:
-            raise ValueError(f"Unsupported output destination: {output_destination}")
-        
-        # Update progress
-        current_task.update_state(state="PROGRESS", meta={"progress": 30})
-        update_task_status(task_id, "running", progress=30)
-        
-        # Run the scheduling task using SaaS integration
-        result = run_scheduling_task_saas(
-            input_source=input_source,
-            input_config=input_config_processed,
-            output_destination=output_destination,
-            output_config=output_config_processed,
-            time_limit=time_limit,
-            debug_shift=debug_shift,
-            log_level=log_level,
-            user_id=user_id,
-            task_id=task_id
-        )
-        
-        # Update progress
-        current_task.update_state(state="PROGRESS", meta={"progress": 80})
-        update_task_status(task_id, "running", progress=80)
-        
-        # Check if task was successful
-        if result.get("error"):
-            update_task_status(
-                task_id, 
-                "failed", 
-                progress=100, 
-                error_message=result["error"]
+    app = current_app._get_current_object()
+    with app.app_context():
+        try:
+            update_task_status(task_id, "running", progress=0)
+            
+            current_task.update_state(state="PROGRESS", meta={"progress": 10})
+            update_task_status(task_id, "running", progress=10)
+            
+            if input_source == "excel":
+                input_config_processed = {
+                    "file_path": input_config.get("file_path")
+                }
+            elif input_source == "google_sheets":
+                input_config_processed = {
+                    "spreadsheet_url": input_config.get("spreadsheet_url"),
+                    "credentials_path": input_config.get("credentials_path", GOOGLE_CREDENTIALS_FILE)
+                }
+            else:
+                raise ValueError(f"Unsupported input source: {input_source}")
+            
+            current_task.update_state(state="PROGRESS", meta={"progress": 20})
+            update_task_status(task_id, "running", progress=20)
+            
+            if output_destination == "excel":
+                output_config_processed = {
+                    "output_path": output_config.get("output_path")
+                }
+            elif output_destination == "google_sheets":
+                output_config_processed = {
+                    "spreadsheet_url": output_config.get("spreadsheet_url"),
+                    "credentials_path": output_config.get("credentials_path", GOOGLE_CREDENTIALS_FILE)
+                }
+            else:
+                raise ValueError(f"Unsupported output destination: {output_destination}")
+            
+            current_task.update_state(state="PROGRESS", meta={"progress": 30})
+            update_task_status(task_id, "running", progress=30)
+            
+            result = run_scheduling_task_saas(
+                input_source=input_source,
+                input_config=input_config_processed,
+                output_destination=output_destination,
+                output_config=output_config_processed,
+                time_limit=time_limit,
+                debug_shift=debug_shift,
+                log_level=log_level,
+                user_id=user_id,
+                task_id=task_id
             )
+            
+            current_task.update_state(state="PROGRESS", meta={"progress": 80})
+            update_task_status(task_id, "running", progress=80)
+            
+            if result.get("error"):
+                update_task_status(
+                    task_id, 
+                    "failed", 
+                    progress=100, 
+                    error_message=result["error"]
+                )
+                return {
+                    "status": "failed",
+                    "error": result["error"]
+                }
+            
+            output_file_path = None
+            chart_file_path = None
+            output_sheet_url = None
+            
+            if output_destination == "excel":
+                output_file_path = output_config_processed.get("output_path")
+            elif output_destination == "google_sheets":
+                output_sheet_url = output_config_processed.get("spreadsheet_url")
+            
+            update_task_status(
+                task_id,
+                "success",
+                progress=100,
+                result_data=result,
+                output_file_path=output_file_path,
+                chart_file_path=chart_file_path,
+                output_sheet_url=output_sheet_url
+            )
+            
+            return {
+                "status": "success",
+                "result": result
+            }
+            
+        except Exception as e:
+            error_message = f"Task failed with error: {str(e)}\n{traceback.format_exc()}"
+            
+            update_task_status(
+                task_id,
+                "failed",
+                progress=100,
+                error_message=error_message
+            )
+            
             return {
                 "status": "failed",
-                "error": result["error"]
+                "error": error_message
             }
-        
-        # Extract file paths from result
-        output_file_path = None
-        chart_file_path = None
-        output_sheet_url = None
-        
-        if output_destination == "excel":
-            output_file_path = output_config_processed.get("output_path")
-        elif output_destination == "google_sheets":
-            output_sheet_url = output_config_processed.get("spreadsheet_url")
-        
-        # Update task status to success
-        update_task_status(
-            task_id,
-            "success",
-            progress=100,
-            result_data=result,
-            output_file_path=output_file_path,
-            chart_file_path=chart_file_path,
-            output_sheet_url=output_sheet_url
-        )
-        
-        return {
-            "status": "success",
-            "result": result
-        }
-        
-    except Exception as e:
-        error_message = f"Task failed with error: {str(e)}\n{traceback.format_exc()}"
-        
-        update_task_status(
-            task_id,
-            "failed",
-            progress=100,
-            error_message=error_message
-        )
-        
-        return {
-            "status": "failed",
-            "error": error_message
-        }
 
 
 @celery_app.task(name="app.tasks.schedule.cleanup_old_tasks")
@@ -207,45 +197,42 @@ def cleanup_old_tasks():
     """
     Cleanup old completed tasks and their files
     """
-    db = SessionLocal()
-    try:
-        # Find tasks older than 7 days that are completed
-        from datetime import datetime, timedelta
-        cutoff_date = datetime.utcnow() - timedelta(days=7)
-        
-        old_tasks = db.query(ScheduleTask).filter(
-            ScheduleTask.status.in_(["success", "failed", "cancelled"]),
-            ScheduleTask.completed_at < cutoff_date
-        ).all()
-        
-        for task in old_tasks:
-            # Delete associated files
-            if task.input_file_path and os.path.exists(task.input_file_path):
-                try:
-                    os.remove(task.input_file_path)
-                except OSError:
-                    pass
+    app = current_app._get_current_object()
+    with app.app_context():
+        session = db.session
+        try:
+            from datetime import datetime, timedelta
+            cutoff_date = datetime.utcnow() - timedelta(days=7)
             
-            if task.output_file_path and os.path.exists(task.output_file_path):
-                try:
-                    os.remove(task.output_file_path)
-                except OSError:
-                    pass
+            old_tasks = session.query(ScheduleTask).filter(
+                ScheduleTask.status.in_(["success", "failed", "cancelled"]),
+                ScheduleTask.completed_at < cutoff_date
+            ).all()
             
-            if task.chart_file_path and os.path.exists(task.chart_file_path):
-                try:
-                    os.remove(task.chart_file_path)
-                except OSError:
-                    pass
+            for task in old_tasks:
+                if task.input_file_path and os.path.exists(task.input_file_path):
+                    try:
+                        os.remove(task.input_file_path)
+                    except OSError:
+                        pass
+                
+                if task.output_file_path and os.path.exists(task.output_file_path):
+                    try:
+                        os.remove(task.output_file_path)
+                    except OSError:
+                        pass
+                
+                if task.chart_file_path and os.path.exists(task.chart_file_path):
+                    try:
+                        os.remove(task.chart_file_path)
+                    except OSError:
+                        pass
+                
+                session.delete(task)
             
-            # Delete task record
-            db.delete(task)
-        
-        db.commit()
-        return f"Cleaned up {len(old_tasks)} old tasks"
-        
-    except Exception as e:
-        db.rollback()
-        return f"Error during cleanup: {str(e)}"
-    finally:
-        db.close()
+            session.commit()
+            return f"Cleaned up {len(old_tasks)} old tasks"
+            
+        except Exception as e:
+            session.rollback()
+            return f"Error during cleanup: {str(e)}"

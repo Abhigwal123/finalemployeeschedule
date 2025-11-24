@@ -1,6 +1,6 @@
 # Department Model
-from app import db
-from datetime import datetime
+from ..extensions import db
+from datetime import datetime, date
 from typing import List
 import logging
 
@@ -69,8 +69,8 @@ class Department(db.Model):
             'departmentName': self.departmentName,
             'description': self.description,
             'is_active': self.is_active,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at is not None and isinstance(self.created_at, (datetime, date)) else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at is not None and isinstance(self.updated_at, (datetime, date)) else None,
             'schedule_definitions_count': self.schedule_definitions.count()
         }
     

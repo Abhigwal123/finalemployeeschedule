@@ -18,7 +18,8 @@ def health():
     
     # CRITICAL: Test database connection - this is what login endpoint needs
     try:
-        from app import db
+        # CRITICAL: Use relative import to ensure same db instance
+        from ..extensions import db
         from sqlalchemy import text
         db.session.execute(text('SELECT 1'))
         db.session.commit()
@@ -434,7 +435,8 @@ def system_health():
     """System health check endpoint (no auth required for monitoring)"""
     from flask import current_app
     import redis
-    from app import db
+    # CRITICAL: Use relative import to ensure same db instance
+    from ..extensions import db
     from sqlalchemy import text
     import os
     
@@ -625,7 +627,7 @@ def schedule_user_tasks():
                 try:
                     # Import celery to trigger async task
                     try:
-                        from app.tasks.celery_app import celery
+                        from app.celery_app import celery
                     except ImportError:
                         try:
                             from app.extensions import celery

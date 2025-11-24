@@ -230,7 +230,8 @@ class DashboardDataService:
             # Step 1: Try to get mapping from database (EmployeeMapping table)
             employee_identifier_from_mapping = None
             from app.models import EmployeeMapping
-            from app import db
+            # CRITICAL: Use relative import to ensure same db instance
+            from ..extensions import db
             
             logger.info(f"[TRACE] Looking up EmployeeMapping for user_id: {user_id}, schedule_def_id: {schedule_def.scheduleDefID}")
             employee_mapping_record = EmployeeMapping.find_by_user(user_id, schedule_def.scheduleDefID)

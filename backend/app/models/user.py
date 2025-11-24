@@ -1,6 +1,6 @@
 # User Model
-from app import db
-from datetime import datetime
+from ..extensions import db
+from datetime import datetime, date
 from typing import List, Optional, TYPE_CHECKING
 from sqlalchemy.orm import foreign
 from sqlalchemy import func
@@ -139,9 +139,9 @@ class User(db.Model):
             'email': self.email,
             'full_name': self.full_name,
             'employee_id': self.employee_id,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
-            'last_login': self.last_login.isoformat() if self.last_login else None
+            'created_at': self.created_at.isoformat() if self.created_at is not None and isinstance(self.created_at, (datetime, date)) else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at is not None and isinstance(self.updated_at, (datetime, date)) else None,
+            'last_login': self.last_login.isoformat() if self.last_login is not None and isinstance(self.last_login, (datetime, date)) else None
         }
         
         if include_sensitive:

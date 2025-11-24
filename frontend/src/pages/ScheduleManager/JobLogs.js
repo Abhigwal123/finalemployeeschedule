@@ -81,15 +81,15 @@ export default function JobLogs() {
       
       console.log('[DEBUG] Fetch Params → dept=', selectedDepartment, 'status=', selectedStatus, 'date=', selectedDate);
 
-      // Load job logs
+      // Load job logs (limit to last 10 logs)
       console.log('[TRACE] ScheduleManager JobLogs: Loading data...');
       console.log('[TRACE] ScheduleManager JobLogs: Filters:', filters);
       
-      const response = await scheduleService.getJobLogs(1, 50, filters);
+      const response = await scheduleService.getJobLogs(1, 10, filters);
       
       console.log('[TRACE] ScheduleManager JobLogs: Response:', response);
       console.log('[DEBUG] Checking Schedule Logs → count:', response.data?.length || 0);
-      let logs = response.data || [];
+      let logs = (response.data || []).slice(0, 10); // Ensure only 10 logs are displayed
       
       // If department filter is set, we need to filter by schedule_def_id
       // For now, we'll just load all and filter client-side

@@ -12,32 +12,90 @@ import sys
 import pandas as pd
 from typing import Dict, Any, Optional
 
-# 🔧 CRITICAL: Setup Python path BEFORE importing legacy_app.* modules
-# For "from legacy_app.data_provider import ..." to work, we need legacy_app in sys.path
-# In Docker: ./backend -> /app/backend, ./app -> /app/legacy_app
-# NOTE: This file is now in backend/, so script_dir is backend/, and project_root is parent of backend/
+# 🔧 CRITICAL: Setup Python path BEFORE importing refactor.* modules
+# Refactor folder is now in backend/refactor
+# NOTE: This file is now in backend/, so script_dir is backend/
 script_dir = os.path.dirname(os.path.abspath(__file__))  # This IS the backend directory
 project_root = os.path.dirname(script_dir)  # Project root (parent of backend/)
-# Check for legacy_app mount first (Docker), then fall back to app (local dev)
-legacy_app_dir = os.path.abspath(os.path.join(project_root, "legacy_app"))
-app_dir = os.path.abspath(os.path.join(project_root, "app"))
-if os.path.exists(legacy_app_dir):
-    app_dir = legacy_app_dir
-elif not os.path.exists(app_dir):
+# Refactor folder is now in backend/refactor
+refactor_dir = os.path.abspath(os.path.join(script_dir, "refactor"))
+if not os.path.exists(refactor_dir):
     # Try Docker paths
-    legacy_app_dir = "/app/legacy_app"
-    if os.path.exists(legacy_app_dir):
-        app_dir = legacy_app_dir
+    docker_refactor_dir = "/app/backend/refactor"
+    if os.path.exists(docker_refactor_dir):
+        refactor_dir = docker_refactor_dir
 backend_dir = script_dir  # We're now inside backend/
 
-# CRITICAL: Setup sys.path for both backend and legacy_app
+# CRITICAL: Pre-import google-auth BEFORE adding backend to sys.path
+# If backend/ is already in sys.path (from integration.py or main.py), temporarily remove it
+# This prevents our local refactor/ folder from shadowing the installed google-auth package
+normalized_backend_dir = os.path.normpath(backend_dir)
+normalized_refactor_dir = os.path.normpath(refactor_dir)
+normalized_paths = [os.path.normpath(p) for p in sys.path]
+
+# Also check for current directory '.' which might be backend/
+current_dir = os.path.normpath(os.getcwd())
+_backend_was_in_path = normalized_backend_dir in normalized_paths or current_dir == normalized_backend_dir
+_refactor_dir_was_in_path = normalized_refactor_dir in normalized_paths
+
+# Remove both backend_dir and refactor_dir from sys.path before pre-importing
+# Remove in reverse order to avoid index shifting issues
+paths_to_remove = []
+for i, path in enumerate(sys.path):
+    norm_path = os.path.normpath(path)
+    if norm_path == normalized_refactor_dir:
+        paths_to_remove.append(i)
+    elif norm_path == normalized_backend_dir or (path == '.' and current_dir == normalized_backend_dir):
+        paths_to_remove.append(i)
+
+# Remove from end to beginning to avoid index shifting
+for i in sorted(paths_to_remove, reverse=True):
+    sys.path.pop(i)
+
+_pre_imported_google_auth = False
+# Check if google-auth is already in sys.modules (pre-imported by integration.py)
+if 'google.auth' in sys.modules:
+    _pre_imported_google_auth = True
+else:
+    try:
+        # Import google-auth and all its submodules BEFORE backend is in sys.path
+        # This ensures they're loaded into sys.modules and won't be shadowed
+        import google.auth
+        import google.auth.credentials
+        import google.auth.transport
+        import google.auth.transport.requests
+        import google.oauth2
+        import google.oauth2.service_account
+        import google.oauth2.credentials
+        # Also pre-import gspread which depends on google.auth
+        import gspread
+        # Mark as successfully pre-imported
+        _pre_imported_google_auth = True
+    except ImportError as e:
+        # google-auth may not be installed - that's OK, will be imported when needed
+        # But we need to handle the case where gspread tries to import it
+        _pre_imported_google_auth = False
+        import logging
+        logging.basicConfig(level=logging.WARNING)
+        _temp_logger = logging.getLogger(__name__)
+        _temp_logger.warning(f"[RUN_REFACTORED] Could not pre-import google-auth: {e}")
+
+# CRITICAL: Setup sys.path for backend (refactor is already in backend/)
 # Add backend first so backend.app takes precedence
-if backend_dir not in sys.path:
+# Note: google-auth is already in sys.modules, so it won't be shadowed
+# CRITICAL: Do NOT add refactor_dir to sys.path - it will shadow google-auth
+normalized_paths = [os.path.normpath(p) for p in sys.path]
+if normalized_backend_dir not in normalized_paths:
+    sys.path.insert(0, backend_dir)
+elif _backend_was_in_path:
+    # Restore backend to sys.path (it was temporarily removed)
     sys.path.insert(0, backend_dir)
 
-# Add legacy_app to sys.path for "from legacy_app.*" imports
-if app_dir not in sys.path:
-    sys.path.insert(0, app_dir)
+# Ensure refactor_dir is NOT in sys.path (it would shadow google-auth)
+normalized_paths = [os.path.normpath(p) for p in sys.path]
+if normalized_refactor_dir in normalized_paths:
+    idx = normalized_paths.index(normalized_refactor_dir)
+    sys.path.pop(idx)
 
 # Log path setup for debugging
 import logging
@@ -45,9 +103,9 @@ logging.basicConfig(level=logging.INFO)
 _path_logger = logging.getLogger(__name__)
 _path_logger.info(f"[RUN_REFACTORED] Script dir (backend): {script_dir}")
 _path_logger.info(f"[RUN_REFACTORED] Project root: {project_root}")
-_path_logger.info(f"[RUN_REFACTORED] Legacy app package location: {app_dir}")
+_path_logger.info(f"[RUN_REFACTORED] Refactor package location: {refactor_dir}")
 _path_logger.info(f"[RUN_REFACTORED] sys.path[0:3]: {sys.path[0:3]}")
-_path_logger.info(f"[RUN_REFACTORED] ✅ Legacy app in sys.path - 'from legacy_app.*' imports should work")
+_path_logger.info(f"[RUN_REFACTORED] ✅ Refactor in sys.path - 'from refactor.*' imports should work")
 
 # Default configuration - URLs are preset in the file
 DEFAULT_INPUT_SHEET_URL = "https://docs.google.com/spreadsheets/d/1hEr8XD3ThVQQAFWi-Q0owRYxYnBRkwyqiOdbmp6zafg/edit?gid=0#gid=0"
@@ -58,170 +116,177 @@ os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", DEFAULT_CREDENTIALS_PATH
 
 # Import our refactored modules - Use absolute imports
 # These imports will fail with explicit error if modules not found (no try/except)
-_path_logger.info(f"[RUN_REFACTORED] Attempting to import legacy_app.* modules...")
+_path_logger.info(f"[RUN_REFACTORED] Attempting to import refactor.* modules...")
 
-# CRITICAL: Verify we're importing from the correct app directory (root app, not backend/app)
-# Check if 'app' is already in sys.modules and verify it's the root app
-# IMPORTANT: We need to handle the case where backend/app is already imported
-# We should NOT delete backend/app modules as they are needed by the backend
-backend_app_path = os.path.join(backend_dir, 'app')
-backend_app_init = os.path.join(backend_app_path, '__init__.py')
-
-if 'app' in sys.modules:
-    existing_app = sys.modules['app']
-    existing_app_path = getattr(existing_app, '__file__', None)
-    if existing_app_path:
-        expected_app_path = os.path.join(app_dir, '__init__.py')
-        if existing_app_path != expected_app_path:
-            # The 'app' module is from backend/app, not root app
-            # We need to handle this carefully - we can't just delete it because
-            # backend/app modules (like app.scheduling.integration) depend on it
-            _path_logger.warning(f"[RUN_REFACTORED] ⚠️ 'app' module loaded from backend: {existing_app_path}")
-            _path_logger.warning(f"[RUN_REFACTORED] Expected root app: {expected_app_path}")
-            _path_logger.warning(f"[RUN_REFACTORED] Will import root app modules with explicit path handling")
-            
-            # Don't delete backend/app - it's needed by the backend
-            # Instead, we'll import root app modules directly using importlib
-            # This avoids conflicts with backend/app
-            use_importlib = True
-        else:
-            # Already the correct root app
-            use_importlib = False
-    else:
-        use_importlib = False
-else:
-    use_importlib = False
-
+# Import our local google modules using importlib to avoid package conflicts
+# CRITICAL: Temporarily remove backend from sys.path when loading modules
+# This ensures google-auth can be imported by gspread without conflicts
 try:
-    if use_importlib:
-        # Use importlib to import root app modules, but ensure they're loaded as part of 'app' package
-        # This is necessary because root app modules use relative imports (from .data_provider import ...)
-        import importlib.util
-        import types
-        _path_logger.info(f"[RUN_REFACTORED] Using importlib to import root app modules as 'app' package...")
+    import importlib.util
+    import types
+    
+    # Temporarily remove backend and refactor_dir from sys.path to allow google-auth imports
+    # Normalize paths for comparison (Windows vs Unix paths)
+    _backend_removed_for_import = False
+    _refactor_dir_removed_for_import = False
+    normalized_backend_dir = os.path.normpath(backend_dir)
+    normalized_refactor_dir = os.path.normpath(refactor_dir)
+    normalized_paths = [os.path.normpath(p) for p in sys.path]
+    
+    # Remove refactor_dir first (if present)
+    if normalized_refactor_dir in normalized_paths:
+        idx = normalized_paths.index(normalized_refactor_dir)
+        sys.path.pop(idx)
+        normalized_paths.pop(idx)  # Update our tracking list
+        _refactor_dir_removed_for_import = True
+        _path_logger.info(f"[RUN_REFACTORED] Removed refactor_dir from sys.path for module execution")
+    
+    # Remove backend_dir (if present)
+    if normalized_backend_dir in normalized_paths:
+        idx = normalized_paths.index(normalized_backend_dir)
+        sys.path.pop(idx)
+        _backend_removed_for_import = True
+        _path_logger.info(f"[RUN_REFACTORED] Removed backend_dir from sys.path for module execution")
+    
+    try:
+        # Ensure google-auth and gspread are in sys.modules before loading our modules
+        # (gspread will need google.auth when our modules import it)
+        if 'google.auth' not in sys.modules:
+            try:
+                import google.auth
+                import google.auth.credentials
+                import google.oauth2.service_account
+            except ImportError:
+                pass  # Will fail later if needed
         
-        # Step 1: Temporarily store and remove only CONFLICTING backend/app modules from sys.modules
-        # We only remove modules that would conflict with root app modules:
-        # - app (the package itself) - needed so root app can be set up
-        # - app.utils.* modules (if they exist in backend) - needed so root app.utils.* can be used
-        # We do NOT remove backend-specific modules like app.scheduling.integration
-        backend_app_backup = sys.modules.get('app')
-        conflicting_modules = {}
+        # Pre-import gspread to ensure it can find google.auth
+        # This must happen while backend_dir is NOT in sys.path
+        if 'gspread' not in sys.modules:
+            try:
+                import gspread
+                _path_logger.info(f"[RUN_REFACTORED] ✅ Pre-imported gspread successfully")
+            except ImportError as e:
+                _path_logger.warning(f"[RUN_REFACTORED] Could not pre-import gspread: {e}")
+                # Continue anyway - will fail later if needed
         
-        # Check and remove 'app' package if it's from backend
-        if 'app' in sys.modules:
-            v = sys.modules['app']
-            if hasattr(v, '__file__') and v.__file__:
-                file_path = str(v.__file__)
-                if 'backend' in file_path and 'app' in file_path:
-                    conflicting_modules['app'] = v
+        # Verify setup before executing modules
+        _path_logger.info(f"[RUN_REFACTORED] Verifying setup: google.auth in sys.modules={('google.auth' in sys.modules)}, backend_dir in sys.path={backend_dir in sys.path}")
         
-        # Check and remove app.utils.* modules that are from backend
-        # We need to check all app.utils.* modules, not just specific ones
-        for k, v in list(sys.modules.items()):
-            if k.startswith('app.utils'):
-                if hasattr(v, '__file__') and v.__file__:
-                    file_path = str(v.__file__)
-                    if 'backend' in file_path and 'app' in file_path:
-                        conflicting_modules[k] = v
+        # CRITICAL: Set up the refactor package namespace for relative imports
+        # Create a refactor package module if it doesn't exist
+        if 'refactor' not in sys.modules:
+            refactor_package = types.ModuleType('refactor')
+            refactor_package.__path__ = [str(refactor_dir)]
+            sys.modules['refactor'] = refactor_package
+        else:
+            refactor_package = sys.modules['refactor']
         
-        # Remove only conflicting modules from sys.modules temporarily
-        for k in list(conflicting_modules.keys()):
-            del sys.modules[k]
+        # Create refactor.utils package for logger
+        if 'refactor.utils' not in sys.modules:
+            refactor_utils_package = types.ModuleType('refactor.utils')
+            refactor_utils_package.__path__ = [str(os.path.join(refactor_dir, 'utils'))]
+            sys.modules['refactor.utils'] = refactor_utils_package
+            refactor_package.utils = refactor_utils_package
+        else:
+            refactor_utils_package = sys.modules['refactor.utils']
         
-        # Step 2: Create root 'legacy_app' package in sys.modules
-        root_app_init_path = os.path.join(app_dir, '__init__.py')
-        root_app_spec = importlib.util.spec_from_file_location('legacy_app', root_app_init_path)
-        if root_app_spec is None or root_app_spec.loader is None:
-            raise ImportError(f"Could not create spec for root legacy_app package from {root_app_init_path}")
-        root_app_module = importlib.util.module_from_spec(root_app_spec)
-        sys.modules['legacy_app'] = root_app_module
-        root_app_spec.loader.exec_module(root_app_module)
+        # Load modules directly from files and add to sys.modules for relative imports
+        # Load logger FIRST (schedule_cpsat imports from .utils.logger)
+        logger_path = os.path.join(refactor_dir, "utils", "logger.py")
+        spec = importlib.util.spec_from_file_location("refactor.utils.logger", logger_path)
+        logger_module = importlib.util.module_from_spec(spec)
+        logger_module.__package__ = 'refactor.utils'
+        logger_module.__name__ = 'refactor.utils.logger'
+        sys.modules['refactor.utils.logger'] = logger_module
+        refactor_utils_package.logger = logger_module
+        spec.loader.exec_module(logger_module)
+        setup_logging = logger_module.setup_logging
+        get_logger = logger_module.get_logger
         
-        # Step 2.5: Ensure legacy_app.utils package is set up before importing modules that use it
-        # This is critical because legacy_app.schedule_cpsat uses relative imports like "from .utils.logger import get_logger"
-        utils_dir = os.path.join(app_dir, 'utils')
-        utils_init_path = os.path.join(utils_dir, '__init__.py')
-        if os.path.exists(utils_init_path):
-            utils_spec = importlib.util.spec_from_file_location('legacy_app.utils', utils_init_path)
-            if utils_spec and utils_spec.loader:
-                utils_module = importlib.util.module_from_spec(utils_spec)
-                sys.modules['legacy_app.utils'] = utils_module
-                utils_spec.loader.exec_module(utils_module)
+        # Load data_provider (schedule_cpsat imports from .data_provider)
+        data_provider_path = os.path.join(refactor_dir, "data_provider.py")
+        spec = importlib.util.spec_from_file_location("refactor.data_provider", data_provider_path)
+        data_provider_module = importlib.util.module_from_spec(spec)
+        data_provider_module.__package__ = 'refactor'
+        data_provider_module.__name__ = 'refactor.data_provider'
+        # Add google-auth to module's namespace so gspread can find it
+        if 'google.auth' in sys.modules:
+            data_provider_module.__dict__['refactor'] = refactor_package
+            data_provider_module.__dict__['refactor'].auth = sys.modules['google.auth']
+            data_provider_module.__dict__['refactor'].oauth2 = sys.modules.get('google.oauth2', types.ModuleType('google.oauth2'))
+        sys.modules['refactor.data_provider'] = data_provider_module
+        refactor_package.data_provider = data_provider_module
+        spec.loader.exec_module(data_provider_module)
+        create_data_provider = data_provider_module.create_data_provider
         
-        # Step 3: Import legacy_app.utils.logger FIRST to ensure it's in sys.modules before schedule_cpsat imports it
-        # This prevents schedule_cpsat from resolving the relative import to backend/app/utils/logger
-        from legacy_app.utils.logger import setup_logging, get_logger
+        # Load data_writer
+        data_writer_path = os.path.join(refactor_dir, "data_writer.py")
+        spec = importlib.util.spec_from_file_location("refactor.data_writer", data_writer_path)
+        data_writer_module = importlib.util.module_from_spec(spec)
+        data_writer_module.__package__ = 'refactor'
+        data_writer_module.__name__ = 'refactor.data_writer'
+        if 'google.auth' in sys.modules:
+            data_writer_module.__dict__['refactor'] = refactor_package
+            data_writer_module.__dict__['refactor'].auth = sys.modules['google.auth']
+            data_writer_module.__dict__['refactor'].oauth2 = sys.modules.get('google.oauth2', types.ModuleType('google.oauth2'))
+        sys.modules['refactor.data_writer'] = data_writer_module
+        refactor_package.data_writer = data_writer_module
+        spec.loader.exec_module(data_writer_module)
+        create_data_writer = data_writer_module.create_data_writer
+        write_all_results_to_excel = data_writer_module.write_all_results_to_excel
+        write_all_results_to_google_sheets = data_writer_module.write_all_results_to_google_sheets
         
-        # Step 4: Now import other root app modules (they'll use relative imports correctly)
-        from legacy_app.data_provider import create_data_provider
-        from legacy_app.data_writer import create_data_writer, write_all_results_to_excel, write_all_results_to_google_sheets
-        from legacy_app.schedule_cpsat import process_input_data, solve_cpsat
-        from legacy_app.schedule_helpers import (
-            build_rows, build_daily_analysis_report, check_hard_constraints, 
-            check_soft_constraints, generate_soft_constraint_report, 
-            create_schedule_chart, debug_schedule
-        )
+        # Load schedule_cpsat (needs data_provider and utils.logger)
+        schedule_cpsat_path = os.path.join(refactor_dir, "schedule_cpsat.py")
+        spec = importlib.util.spec_from_file_location("refactor.schedule_cpsat", schedule_cpsat_path)
+        schedule_cpsat_module = importlib.util.module_from_spec(spec)
+        schedule_cpsat_module.__package__ = 'refactor'
+        schedule_cpsat_module.__name__ = 'refactor.schedule_cpsat'
+        # Make sure parent package is available for relative imports
+        schedule_cpsat_module.__dict__['refactor'] = refactor_package
+        sys.modules['refactor.schedule_cpsat'] = schedule_cpsat_module
+        refactor_package.schedule_cpsat = schedule_cpsat_module
+        spec.loader.exec_module(schedule_cpsat_module)
+        process_input_data = schedule_cpsat_module.process_input_data
+        solve_cpsat = schedule_cpsat_module.solve_cpsat
         
-        # Step 5: Restore backend/app and backend app.utils.* modules in sys.modules so backend code can import from them
-        # Root app modules are already in sys.modules with their full names (e.g., app.schedule_cpsat),
-        # so they remain accessible. We restore backend/app so backend code can do "from app import db"
-        # We also need to restore backend app.utils package and its modules that we removed earlier
-        if backend_app_backup is not None:
-            # Ensure backend directory is in sys.path FIRST so Python can find backend modules when we restore them
-            backend_dir_str = str(backend_dir)
-            if backend_dir_str not in sys.path:
-                sys.path.insert(0, backend_dir_str)
-            
-            # Restore backend app.utils package and all its modules that were removed
-            # First, restore the app.utils package itself if it was removed
-            backend_utils_backup = conflicting_modules.get('app.utils')
-            if backend_utils_backup:
-                sys.modules['app.utils'] = backend_utils_backup
-            
-            # Then restore all backend app.utils.* modules
-            for k, v in conflicting_modules.items():
-                if k.startswith('app.utils') and 'backend' in str(getattr(v, '__file__', '')):
-                    sys.modules[k] = v
-            
-            # Finally, restore the backend app package itself
-            sys.modules['app'] = backend_app_backup
-            
-            _path_logger.info(f"[RUN_REFACTORED] ✅ Restored backend/app and backend app.utils.* modules in sys.modules for backend imports")
+        # Load schedule_helpers (needs schedule_cpsat)
+        schedule_helpers_path = os.path.join(refactor_dir, "schedule_helpers.py")
+        spec = importlib.util.spec_from_file_location("refactor.schedule_helpers", schedule_helpers_path)
+        schedule_helpers_module = importlib.util.module_from_spec(spec)
+        schedule_helpers_module.__package__ = 'refactor'
+        schedule_helpers_module.__name__ = 'refactor.schedule_helpers'
+        schedule_helpers_module.__dict__['refactor'] = refactor_package
+        sys.modules['refactor.schedule_helpers'] = schedule_helpers_module
+        refactor_package.schedule_helpers = schedule_helpers_module
+        spec.loader.exec_module(schedule_helpers_module)
+        build_rows = schedule_helpers_module.build_rows
+        build_daily_analysis_report = schedule_helpers_module.build_daily_analysis_report
+        check_hard_constraints = schedule_helpers_module.check_hard_constraints
+        check_soft_constraints = schedule_helpers_module.check_soft_constraints
+        generate_soft_constraint_report = schedule_helpers_module.generate_soft_constraint_report
+        create_schedule_chart = schedule_helpers_module.create_schedule_chart
+        debug_schedule = schedule_helpers_module.debug_schedule
         
-        _path_logger.info(f"[RUN_REFACTORED] ✅ Successfully imported all root app modules")
-    else:
-        # Normal import path - legacy_app module is not conflicting
-        # Import legacy_app module first to verify it's the correct one
-        import legacy_app
-        app_file = getattr(legacy_app, '__file__', None)
-        expected_app_file = os.path.join(app_dir, '__init__.py')
-        if app_file != expected_app_file:
-            _path_logger.error(f"[RUN_REFACTORED] ❌ Imported 'legacy_app' from wrong location!")
-            _path_logger.error(f"[RUN_REFACTORED] Got: {app_file}")
-            _path_logger.error(f"[RUN_REFACTORED] Expected: {expected_app_file}")
-            raise ImportError(f"Wrong 'legacy_app' module imported. Got {app_file}, expected {expected_app_file}")
-        _path_logger.info(f"[RUN_REFACTORED] ✅ Verified 'legacy_app' module is from correct location: {app_file}")
-        
-        # Now import the submodules
-        from legacy_app.data_provider import create_data_provider
-        from legacy_app.data_writer import create_data_writer, write_all_results_to_excel, write_all_results_to_google_sheets
-        from legacy_app.schedule_cpsat import process_input_data, solve_cpsat
-        from legacy_app.schedule_helpers import (
-            build_rows, build_daily_analysis_report, check_hard_constraints, 
-            check_soft_constraints, generate_soft_constraint_report, 
-            create_schedule_chart, debug_schedule
-        )
-        from legacy_app.utils.logger import setup_logging, get_logger
-        _path_logger.info(f"[RUN_REFACTORED] ✅ Successfully imported all legacy_app.* modules")
-except ImportError as e:
-    _path_logger.error(f"[RUN_REFACTORED] ❌ FAILED to import legacy_app.* modules: {e}")
-    _path_logger.error(f"[RUN_REFACTORED] Legacy app dir exists: {os.path.exists(app_dir)}")
-    _path_logger.error(f"[RUN_REFACTORED] Legacy app dir contents: {os.listdir(app_dir)[:10] if os.path.exists(app_dir) else 'N/A'}")
+    finally:
+        # Restore backend to sys.path (refactor_dir should NOT be in sys.path)
+        if _backend_removed_for_import and backend_dir not in sys.path:
+            sys.path.insert(0, backend_dir)
+    
+    _path_logger.info(f"[RUN_REFACTORED] ✅ Successfully imported all refactor.* modules using importlib")
+    if _pre_imported_google_auth or 'google.auth' in sys.modules:
+        _path_logger.info(f"[RUN_REFACTORED] ✅ google-auth package available for gspread")
+except Exception as e:
+    # Restore backend to sys.path even on error (refactor_dir should NOT be restored)
+    if '_backend_removed_for_import' in locals() and _backend_removed_for_import and backend_dir not in sys.path:
+        sys.path.insert(0, backend_dir)
+    _path_logger.error(f"[RUN_REFACTORED] ❌ FAILED to import refactor.* modules: {e}")
+    _path_logger.error(f"[RUN_REFACTORED] Refactor dir exists: {os.path.exists(refactor_dir)}")
+    _path_logger.error(f"[RUN_REFACTORED] Refactor dir contents: {os.listdir(refactor_dir)[:10] if os.path.exists(refactor_dir) else 'N/A'}")
     _path_logger.error(f"[RUN_REFACTORED] sys.path: {sys.path[:5]}")
     import traceback
     _path_logger.error(f"[RUN_REFACTORED] Traceback: {traceback.format_exc()}")
-    raise ImportError(f"Cannot import legacy_app.* modules. Legacy app dir: {app_dir}, Error: {e}")
+    raise ImportError(f"Cannot import refactor.* modules. Refactor dir: {refactor_dir}, Error: {e}")
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -401,7 +466,7 @@ def run_schedule_task(
             if gaps:
                 # Import is already done at top of file, but ensure it's available
                 try:
-                    from legacy_app.schedule_helpers import generate_gap_analysis_report
+                    from refactor.schedule_helpers import generate_gap_analysis_report
                     gap_report_lines = generate_gap_analysis_report(provided, gaps)
                     gap_analysis_df = pd.DataFrame(gap_report_lines, columns=['人力缺口分析與建議'])
                     logger.info(f"   - Gap analysis lines: {len(gap_report_lines)}")

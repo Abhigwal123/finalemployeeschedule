@@ -1,6 +1,6 @@
 # Schedule Job Log Model
-from app import db
-from datetime import datetime
+from ..extensions import db
+from datetime import datetime, date
 from typing import List, Optional, Dict, Any
 import logging
 import json
@@ -87,14 +87,14 @@ class ScheduleJobLog(db.Model):
             'tenantID': self.tenantID,
             'scheduleDefID': self.scheduleDefID,
             'runByUserID': self.runByUserID,
-            'startTime': self.startTime.isoformat() if self.startTime else None,
-            'endTime': self.endTime.isoformat() if self.endTime else None,
+            'startTime': self.startTime.isoformat() if self.startTime is not None and isinstance(self.startTime, (datetime, date)) else None,
+            'endTime': self.endTime.isoformat() if self.endTime is not None and isinstance(self.endTime, (datetime, date)) else None,
             'status': self.status,
             'resultSummary': self.resultSummary,
             'error_message': self.error_message,
             'execution_time_seconds': self.execution_time_seconds,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at is not None and isinstance(self.created_at, (datetime, date)) else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at is not None and isinstance(self.updated_at, (datetime, date)) else None,
             'metadata': self.job_metadata,
             'user': self.run_by_user.to_dict() if self.run_by_user else None,
             'schedule_definition': self.schedule_definition.to_dict() if self.schedule_definition else None,

@@ -51,36 +51,20 @@ logger.info(f"[CELERY_WORKER] App package location: {app_dir}")
 logger.info(f"[CELERY_WORKER] sys.path[0:3]: {sys.path[0:3]}")
 logger.info(f"[CELERY_WORKER] ✅ Backend dir in sys.path first - 'from app' will find backend/app")
 
-# Import backend app (will find backend/app because backend_dir is first in sys.path)
-from backend.app import create_app
-from backend.app.extensions import init_celery
+# Import backend app factory and shared Celery instance
+from app import create_app
+from app.celery_app import init_celery_app, celery
 
-# Create Flask app and initialize Celery
+# Create Flask app and initialize Celery using the official factory pattern
 flask_app = create_app()
-celery = init_celery(flask_app)
+celery_app = init_celery_app(flask_app)
 
-if celery:
-    # Autodiscover tasks from all task modules
-    celery.autodiscover_tasks([
-        'backend.app.services.celery_tasks',
-        'backend.app.tasks.google_sync',
-        'backend.app.tasks.tasks'
-    ], force=True)
-    
-    # Also import tasks from celery_tasks module if it exists
-    try:
-        import celery_tasks
-        celery.autodiscover_tasks(['celery_tasks'], force=True)
-    except ImportError:
-        pass
-    
-    import logging
-    logger = logging.getLogger(__name__)
-    logger.info("[CELERY] Task autodiscovery completed")
-    logger.info(f"[CELERY] Registered tasks: {list(celery.tasks.keys())}")
+import logging
+logger = logging.getLogger(__name__)
+logger.info("[CELERY_WORKER] Flask app initialized for Celery worker")
+logger.info(f"[CELERY_WORKER] Celery registered tasks: {len(celery_app.tasks)}")
 
 # Export celery for celery command
 __all__ = ['celery', 'flask_app']
-
 
 

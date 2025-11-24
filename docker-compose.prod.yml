@@ -20,15 +20,17 @@ services:
       - DEBUG=False
       - SECRET_KEY=${SECRET_KEY}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - PYTHONPATH=/app/backend:/app/legacy_app:/app
+      - PYTHONPATH=/app/backend:/app
       # DATABASE_URL is inherited from docker-compose.yml (includes charset=utf8mb4)
+    command: >
+      sh -c "cd /app/backend && alembic upgrade head && python main.py --host 0.0.0.0 --port 8000"
     # Remove debug port exposure in production (use nginx reverse proxy instead)
     ports: []  # Remove port exposure in production
     # Mount service account credentials (read-only)
     volumes:
       - ./service-account-creds.json:/app/service-account-creds.json:ro
-      - ./app:/app/legacy_app:ro
-      - ./backend:/app/backend:ro
+      - ./logs:/app/logs
+      - ./instance:/app/instance
     deploy:
       resources:
         limits:
@@ -41,6 +43,7 @@ services:
         condition: on-failure
         delay: 5s
         max_attempts: 3
+    init: true
 
   celery-worker:
     env_file:
@@ -48,11 +51,11 @@ services:
     environment:
       - FLASK_ENV=production
       - DEBUG=False
-      - PYTHONPATH=/app/backend:/app/legacy_app:/app
+      - PYTHONPATH=/app/backend:/app
     volumes:
       - ./service-account-creds.json:/app/service-account-creds.json:ro
-      - ./app:/app/legacy_app:ro
-      - ./backend:/app/backend:ro
+      - ./logs:/app/logs
+      - ./instance:/app/instance
     deploy:
       resources:
         limits:
@@ -65,6 +68,7 @@ services:
         condition: on-failure
         delay: 5s
         max_attempts: 3
+    init: true
 
   celery-beat:
     env_file:
@@ -72,11 +76,11 @@ services:
     environment:
       - FLASK_ENV=production
       - DEBUG=False
-      - PYTHONPATH=/app/backend:/app/legacy_app:/app
+      - PYTHONPATH=/app/backend:/app
     volumes:
       - ./service-account-creds.json:/app/service-account-creds.json:ro
-      - ./app:/app/legacy_app:ro
-      - ./backend:/app/backend:ro
+      - ./logs:/app/logs
+      - ./instance:/app/instance
     deploy:
       resources:
         limits:
@@ -89,6 +93,7 @@ services:
         condition: on-failure
         delay: 5s
         max_attempts: 3
+    init: true
 
   # ai-service:
   #   environment:

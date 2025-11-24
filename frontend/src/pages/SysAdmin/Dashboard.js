@@ -110,7 +110,8 @@ export default function Dashboard() {
         console.log('[TRACE] Frontend: Logs response:', logsResponse.data);
         const logsData = logsResponse.data.logs || logsResponse.data.data || logsResponse.data || [];
         console.log(`[TRACE] Frontend: Loaded ${logsData.length} log entries from database`);
-        setLogs(Array.isArray(logsData) ? logsData : []);
+        // Ensure only last 10 logs are displayed
+        setLogs(Array.isArray(logsData) ? logsData.slice(0, 10) : []);
       } catch (logErr) {
         console.warn('[TRACE] Frontend: Failed to load logs:', logErr);
         console.warn('[TRACE] Frontend: Log error details:', {

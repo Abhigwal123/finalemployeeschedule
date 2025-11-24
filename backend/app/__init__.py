@@ -5,8 +5,16 @@ from .config import Config
 from dotenv import load_dotenv
 import os
 import pymysql
-from .extensions import db, jwt, cors, init_celery
+from .extensions import db, jwt, cors
 from .utils.logger import configure_logging
+
+# Ensure the package is addressable as both "backend.app" and "app" so that
+# imports like "from app.models import ..." and "from backend.app.models import ..."
+# resolve to the exact same module objects. Without this alias the package can be
+# loaded twice, which causes SQLAlchemy to think tables/models are defined twice.
+import sys as _sys
+_sys.modules.setdefault("app", _sys.modules[__name__])
+
 pymysql.install_as_MySQLdb()
 from .routes.common_routes import common_bp
 from .routes.auth import auth_bp
@@ -74,14 +82,31 @@ def register_blueprints(app: Flask) -> None:
         # Don't raise - let app continue, but log the error
 
 
-def create_app(config_object: type[Config] | None = None):
+def create_app(config_object: type[Config] | None = None, *, with_celery: bool = True):
     configure_logging()
 
     # Load environment variables from .env if present
+    # Try to load from project root first (for consistency with Docker Compose)
+    # Then fall back to current directory
     try:
-        load_dotenv()
+        import pathlib
+        # Get project root (parent of backend/)
+        backend_dir = pathlib.Path(__file__).parent.parent  # backend/app -> backend
+        project_root = backend_dir.parent  # backend -> project root
+        env_path = project_root / '.env'
+        
+        # Try project root first
+        if env_path.exists():
+            load_dotenv(env_path)
+        else:
+            # Fall back to current directory (for backward compatibility)
+            load_dotenv()
     except Exception:
-        pass
+        # If path resolution fails, try default location
+        try:
+            load_dotenv()
+        except Exception:
+            pass
 
     app = Flask(__name__)
     app.config.from_object(config_object or Config)
@@ -1010,13 +1035,13 @@ def create_app(config_object: type[Config] | None = None):
             logger.debug(traceback.format_exc())
 
     # Init Celery and bind tasks
-    celery_app = init_celery(app)
-    if celery_app is not None:
+    if with_celery:
+        from .celery_app import init_celery_app
+
+        celery_app = init_celery_app(app)
         bind_celery(celery_app)
         register_periodic_tasks(celery_app)
-        # Ensure Celery is stored in app extensions (init_celery should do this, but ensure it)
-        if 'celery' not in app.extensions:
-            app.extensions['celery'] = celery_app
+
         import logging
         logger = logging.getLogger(__name__)
         registered_tasks = list(celery_app.tasks.keys())

@@ -52,3 +52,18 @@ __all__ = [
     'SyncLog',
     'ScheduleTask'
 ]
+
+# Ensure "app.models" (and submodules) resolve to the already-loaded backend modules.
+import sys as _sys
+_alias_root = "app.models"
+_backend_root = __name__
+_sys.modules.setdefault(_alias_root, _sys.modules[_backend_root])
+
+# Mirror every loaded submodule under the app.models namespace so imports like
+# "from app.models.schedule_task import ScheduleTask" reuse the exact same module
+# objects instead of loading duplicates (which caused duplicate table definitions).
+for _module_name, _module in list(_sys.modules.items()):
+    if not _module_name or not _module_name.startswith(_backend_root):
+        continue
+    _alias_name = _module_name.replace(_backend_root, _alias_root, 1)
+    _sys.modules.setdefault(_alias_name, _module)

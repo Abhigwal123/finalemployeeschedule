@@ -3,8 +3,8 @@ Cached Schedule Model
 Stores individual schedule entries (date + shift) for employees in database
 Used for fast dashboard loading without hitting Google Sheets API
 """
-from app import db
-from datetime import datetime
+from ..extensions import db
+from datetime import datetime, date
 from typing import Optional
 import logging
 
@@ -140,11 +140,11 @@ class CachedSchedule(db.Model):
             'tenant_id': self.tenant_id,
             'schedule_def_id': self.schedule_def_id,
             'user_id': self.user_id,
-            'date': self.date.isoformat() if self.date else None,
+            'date': self.date.isoformat() if self.date is not None and isinstance(self.date, (datetime, date)) else None,
             'shift_type': self.shift_type,
             'shift_value': self.shift_value,  # Raw shift value from sheet
             'time_range': self.time_range,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at is not None and isinstance(self.created_at, (datetime, date)) else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at is not None and isinstance(self.updated_at, (datetime, date)) else None,
         }
 

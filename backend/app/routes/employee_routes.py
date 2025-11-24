@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request, make_response
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app import db
+# CRITICAL: Use relative import to ensure same db instance
+from ..extensions import db
 from ..models import User
 import logging
 import os
@@ -874,7 +875,8 @@ def get_available_employee_ids():
         logger.info(f"[TRACE][EMPLOYEE] GET request received - Fetching Employee IDs from DATABASE ONLY...")
 
         from app.models import EmployeeMapping, SyncLog
-        from app import db
+        # CRITICAL: Use relative import to ensure same db instance
+        from ..extensions import db
 
         # ✅ Step 2: Verify DB connection
         try:

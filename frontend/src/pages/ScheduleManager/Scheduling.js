@@ -102,6 +102,7 @@ export default function Scheduling() {
           try {
             console.log('[DEBUG] Checking job status for schedule:', schedule.scheduleDefID);
             
+            // Get only the latest job status (1 log is enough for status check)
             const jobStatusResponse = await scheduleService.getJobLogs(1, 1, {
               schedule_def_id: schedule.scheduleDefID,
             });
@@ -193,13 +194,13 @@ export default function Scheduling() {
       
       console.log('[DEBUG] Fetching logs for schedule:', schedule.scheduleDefID);
       
-      // Fetch logs for this specific schedule
-      const response = await scheduleService.getJobLogs(1, 50, {
+      // Fetch logs for this specific schedule (limit to last 10 logs)
+      const response = await scheduleService.getJobLogs(1, 10, {
         schedule_def_id: schedule.scheduleDefID,
       });
       
       console.log('[DEBUG] Schedule logs response:', response);
-      const logs = response.data || [];
+      const logs = (response.data || []).slice(0, 10); // Ensure only 10 logs are displayed
       console.log('[DEBUG] Retrieved', logs.length, 'logs for schedule');
       
       setScheduleLogs(logs);
@@ -333,8 +334,17 @@ export default function Scheduling() {
       } else if (!err.response) {
         errorMsg = '無法連接到伺服器，請確認後端服務是否正在運行';
       } else {
-        // Use normalizeApiError to ensure we always get a string
-        errorMsg = normalizeApiError(err);
+        // Get detailed error message from backend
+        const errorData = err.response?.data;
+        if (errorData?.details) {
+          // Show detailed error message from backend
+          errorMsg = `執行排班失敗: ${errorData.details}`;
+          console.error('[DEBUG] Backend error details:', errorData.details);
+          console.error('[DEBUG] Backend error type:', errorData.error_type);
+        } else {
+          // Use normalizeApiError as fallback
+          errorMsg = normalizeApiError(err);
+        }
       }
       
       setError(errorMsg);

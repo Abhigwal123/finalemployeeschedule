@@ -1,6 +1,6 @@
 # Schedule Definition Model
-from app import db
-from datetime import datetime
+from ..extensions import db
+from datetime import datetime, date
 from typing import List, Optional
 import logging
 
@@ -94,8 +94,8 @@ class ScheduleDefinition(db.Model):
             'schedulingAPI': self.schedulingAPI,
             'remarks': self.remarks,
             'is_active': self.is_active,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at is not None and isinstance(self.created_at, (datetime, date)) else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at is not None and isinstance(self.updated_at, (datetime, date)) else None,
             'permissions_count': self.schedule_permissions.count(),
             'job_logs_count': self.schedule_job_logs.count()
         }

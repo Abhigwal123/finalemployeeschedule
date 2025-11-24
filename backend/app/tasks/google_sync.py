@@ -4,29 +4,14 @@ Celery tasks for periodic synchronization of Google Sheets data to database
 """
 import logging
 from flask import current_app
-from app import db
-from ..models import ScheduleDefinition, SyncLog
+# CRITICAL: Use relative import to ensure same db instance
+from ..extensions import db
+from app.models import ScheduleDefinition, SyncLog
 from ..services.google_sheets_sync_service import GoogleSheetsSyncService
 
 logger = logging.getLogger(__name__)
 
-# Import celery - use celery_app as primary source (it's initialized first)
-# This avoids circular import issues with extensions.py
-try:
-    from app.tasks.celery_app import celery
-except ImportError:
-    # Fallback to extensions if celery_app not available
-    try:
-        from app.extensions import celery
-    except ImportError:
-        # Create a mock celery if not available (for development)
-        class MockCelery:
-            def task(self, *args, **kwargs):
-                def decorator(func):
-                    return func
-                return decorator
-        celery = MockCelery()
-        logger.warning("[SYNC] Celery not available - sync tasks will run synchronously")
+from app.celery_app import celery
 
 
 @celery.task(name="app.tasks.google_sync.sync_google_sheets_daily", bind=True)

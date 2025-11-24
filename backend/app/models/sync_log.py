@@ -2,8 +2,8 @@
 Sync Log Model
 Tracks Google Sheets synchronization operations
 """
-from app import db
-from datetime import datetime
+from ..extensions import db
+from datetime import datetime, date
 from typing import Optional
 import logging
 
@@ -66,7 +66,7 @@ class SyncLog(db.Model):
                       error_message: Optional[str] = None):
         """Mark sync as completed"""
         self.completed_at = datetime.utcnow()
-        if self.started_at:
+        if self.started_at is not None:
             self.duration_seconds = (self.completed_at - self.started_at).total_seconds()
         
         self.rows_synced = rows_synced
@@ -129,8 +129,8 @@ class SyncLog(db.Model):
             'tenant_id': self.tenant_id,
             'status': self.status,
             'sync_type': self.sync_type,
-            'started_at': self.started_at.isoformat() if self.started_at else None,
-            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'started_at': self.started_at.isoformat() if self.started_at is not None and isinstance(self.started_at, (datetime, date)) else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at is not None and isinstance(self.completed_at, (datetime, date)) else None,
             'duration_seconds': self.duration_seconds,
             'rows_synced': self.rows_synced,
             'users_synced': self.users_synced,

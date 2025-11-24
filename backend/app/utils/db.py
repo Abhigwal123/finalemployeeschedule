@@ -39,7 +39,8 @@ def drop_tables(app):
 def seed_initial_data(app):
     """Seed database with initial data including default users (admin/editor/viewer)"""
     with app.app_context():
-        from app import db
+        # CRITICAL: Use relative import to ensure same db instance
+        from ..extensions import db
         from app.models import Tenant, User, Department
         from app.utils.security import hash_password
         
@@ -99,7 +100,8 @@ def seed_initial_data(app):
 def seed_schedule_definitions(app):
     """Seed default schedule definitions if none exist"""
     with app.app_context():
-        from app import db
+        # CRITICAL: Use relative import to ensure same db instance
+        from ..extensions import db
         from app.models import ScheduleDefinition, Tenant, Department
         
         # Check if schedule definitions already exist

@@ -1,7 +1,8 @@
 # Schedule Job Log Routes
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app import db
+# CRITICAL: Use relative import to ensure same db instance
+from ..extensions import db
 from ..models import ScheduleJobLog, User, ScheduleDefinition, SchedulePermission
 from ..utils.role_utils import is_sys_admin_role, is_client_admin_role, normalize_role, SYS_ADMIN_ROLE, CLIENT_ADMIN_ROLE
 try:
@@ -70,18 +71,19 @@ def get_schedule_job_logs():
             return response, 404
         
         # Parse pagination parameters with safe defaults
+        # Default to 10 logs (last 10 execution logs)
         try:
             if SCHEMAS_AVAILABLE and PaginationSchema:
                 pagination_schema = PaginationSchema()
                 pagination_data = pagination_schema.load(request.args)
                 page = int(pagination_data.get('page', 1))
-                per_page = min(int(pagination_data.get('per_page', 20)), 100)
+                per_page = min(int(pagination_data.get('per_page', 10)), 100)
             else:
                 page = int(request.args.get('page', 1) or 1)
-                per_page = min(int(request.args.get('per_page', 20) or 20), 100)
+                per_page = min(int(request.args.get('per_page', 10) or 10), 100)
         except Exception:
             page = int(request.args.get('page', 1) or 1)
-            per_page = min(int(request.args.get('per_page', 20) or 20), 100)
+            per_page = min(int(request.args.get('per_page', 10) or 10), 100)
         
         # Query job logs for current tenant
         logs_query = ScheduleJobLog.query.filter_by(tenantID=user.tenantID)
@@ -358,6 +360,15 @@ def run_schedule_job():
         # Enqueue the job for background processing via Celery
         from flask import current_app as flask_app
         
+        # CRITICAL: Get the actual Flask app instance (not proxy) for background thread
+        # We need to get it from the current request context
+        try:
+            flask_app_instance = flask_app._get_current_object()
+        except RuntimeError:
+            # If we can't get it from current_app, try to import it from app creation
+            from .. import create_app
+            flask_app_instance = create_app()
+        
         # Get Celery instance - try multiple methods
         celery_app = None
         try:
@@ -537,11 +548,13 @@ def run_schedule_job():
                 # CRITICAL: Capture os from module level to avoid UnboundLocalError in nested function
                 # Python's closure mechanism requires explicit capture for nested functions
                 _os_module = os  # Capture module-level os import
+                # CRITICAL: Capture Flask app for use in background thread
+                flask_app_instance = flask_app._get_current_object()
                 def run_schedule_in_thread():
                     try:
                         logger.info(f"[INFO] 🔄 Starting run_refactored.py execution in background thread for job {job_log.logID}")
                         logger.info(f"[INFO] This will fetch all sheets from input and write to output")
-                        success = execute_schedule_task_sync(schedule_config_fallback, job_log.logID)
+                        success = execute_schedule_task_sync(schedule_config_fallback, job_log.logID, flask_app=flask_app_instance)
                         if success:
                             logger.info(f"[INFO] ✅ run_refactored.py completed successfully for job {job_log.logID}")
                         else:
@@ -584,15 +597,27 @@ def run_schedule_job():
         
     except Exception as e:
         db.session.rollback()
-        trace_logger.error(f"[DEBUG] Run schedule job error: {e}")
         import traceback
-        trace_logger.error(f"[DEBUG] Traceback: {traceback.format_exc()}")
+        error_trace = traceback.format_exc()
+        trace_logger.error(f"[DEBUG] Run schedule job error: {e}")
+        trace_logger.error(f"[DEBUG] Traceback: {error_trace}")
         logger.error(f"Run schedule job error: {str(e)}")
-        logger.error(traceback.format_exc())
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Full traceback:\n{error_trace}")
+        
+        # Provide more detailed error message
+        error_message = str(e)
+        if "run_refactored" in error_message.lower() or "run_schedule_task" in error_message.lower():
+            error_message = f"Scheduling system error: {error_message}. Please check that run_refactored.py and google modules are properly configured."
+        elif "google.auth" in error_message or "google-auth" in error_message:
+            error_message = f"Google authentication error: {error_message}. Please ensure google-auth package is installed."
+        elif "import" in error_message.lower() and "error" in error_message.lower():
+            error_message = f"Import error: {error_message}. Please check that all required modules are installed."
         
         response = jsonify({
             'error': 'Failed to run schedule job',
-            'details': str(e),
+            'details': error_message,
+            'error_type': type(e).__name__,
             'success': False
         })
         response.headers.add("Access-Control-Allow-Origin", "*")

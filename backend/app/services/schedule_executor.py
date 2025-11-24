@@ -7,8 +7,11 @@ import os  # Import at module level - DO NOT reassign this variable
 import sys
 from datetime import datetime
 from pathlib import Path
-from app import db
-from ..models import ScheduleJobLog
+from flask import current_app, has_app_context
+# CRITICAL: Use relative import to ensure we use the same db instance
+# that was registered with the Flask app (avoids multiple SQLAlchemy instances)
+from ..extensions import db
+from app.models import ScheduleJobLog
 
 logger = logging.getLogger(__name__)
 
@@ -20,45 +23,66 @@ PROJECT_ROOT = str(_backend_dir.parent)  # project root (parent of backend/)
 BASE_DIR = str(_backend_dir)  # backend/
 
 
-def execute_schedule_task_sync(schedule_config, job_log_id):
+def execute_schedule_task_sync(schedule_config, job_log_id, flask_app=None):
     """
     Execute a schedule task synchronously (fallback when Celery is not available)
     
     Args:
         schedule_config: Dictionary with schedule configuration
         job_log_id: ID of the job log to update (can also be in schedule_config)
+        flask_app: Flask application instance (required for database operations in background threads)
     """
     # CRITICAL: Do NOT import os here - it's already imported at module level
     # Re-importing can cause UnboundLocalError if os is used before this line
     # Use the module-level os import instead
     
-    try:
-        # Extract job_log_id from schedule_config if not provided directly
-        if not job_log_id and isinstance(schedule_config, dict):
-            job_log_id = schedule_config.get('job_log_id')
-        
-        logger.info(f"[INFO] Executing schedule task synchronously for job: {job_log_id}")
-        
-        # Get job log - refresh from database to ensure we have the latest state
-        if job_log_id:
-            # Get the job log from database
-            job_log = ScheduleJobLog.query.get(job_log_id)
-            if not job_log:
-                logger.error(f"Job log {job_log_id} not found")
+    # Get Flask app - use provided app or try to get from current_app
+    app = flask_app
+    if not app:
+        try:
+            if has_app_context():
+                app = current_app._get_current_object()
+            else:
+                logger.warning(f"[WARNING] No app context available, but flask_app parameter was not provided")
+                app = None
+        except RuntimeError as e:
+            logger.warning(f"[WARNING] Could not get Flask app from current_app: {e}")
+            app = None
+    
+    if not app:
+        logger.error(f"[ERROR] No Flask app available - cannot execute schedule task. Flask app must be passed as parameter.")
+        return False
+    
+    # CRITICAL: Use app context for all database operations
+    # This ensures SQLAlchemy has access to the Flask app instance
+    # The app context must be active in the background thread
+    with app.app_context():
+        try:
+            # Extract job_log_id from schedule_config if not provided directly
+            if not job_log_id and isinstance(schedule_config, dict):
+                job_log_id = schedule_config.get('job_log_id')
+            
+            logger.info(f"[INFO] Executing schedule task synchronously for job: {job_log_id}")
+            
+            # Get job log - refresh from database to ensure we have the latest state
+            if job_log_id:
+                # Get the job log from database
+                job_log = ScheduleJobLog.query.get(job_log_id)
+                if not job_log:
+                    logger.error(f"Job log {job_log_id} not found")
+                    return False
+                
+                # Only update status if it's not already running (avoid overwriting)
+                if job_log.status not in ['running', 'completed', 'failed', 'cancelled']:
+                    job_log.status = 'running'
+                    job_log.startTime = datetime.utcnow()
+                    db.session.commit()
+                    logger.info(f"[INFO] Job log {job_log_id} status set to running")
+            else:
+                logger.error(f"No job_log_id provided in schedule_config or parameter")
                 return False
             
-            # Only update status if it's not already running (avoid overwriting)
-            if job_log.status not in ['running', 'completed', 'failed', 'cancelled']:
-                job_log.status = 'running'
-                job_log.startTime = datetime.utcnow()
-                db.session.commit()
-                logger.info(f"[INFO] Job log {job_log_id} status set to running")
-        else:
-            logger.error(f"No job_log_id provided in schedule_config or parameter")
-            return False
-        
-        # Execute the scheduling task using the integration layer
-        try:
+            # Execute the scheduling task using the integration layer
             # Import the scheduling integration
             logger.info(f"[SCHEDULE] 🔄 Importing integration layer (app.scheduling.integration)...")
             logger.info(f"[SCHEDULE] Current sys.path[0:3]: {sys.path[0:3]}")
@@ -506,42 +530,42 @@ def execute_schedule_task_sync(schedule_config, job_log_id):
             
             return False
             
-    except Exception as e:
-        # This catches errors in the outer try block (e.g., job_log not found, etc.)
-        import traceback
-        error_trace = traceback.format_exc()
-        logger.error(f"[ERROR] ❌ Failed to execute schedule task (outer error): {e}")
-        logger.error(f"[ERROR] Error type: {type(e).__name__}")
-        logger.error(f"[ERROR] Error traceback:\n{error_trace}")
-        
-        # Try to update job log to failed if we have the ID
-        try:
-            if job_log_id:
-                db.session.rollback()
-                job_log = ScheduleJobLog.query.get(job_log_id)
-                if job_log:
-                    # Only fail if status is not already completed
-                    if job_log.status not in ['completed', 'success']:
-                        error_msg = f"Task execution error ({type(e).__name__}): {str(e)}"
-                        job_log.fail_job(
-                            error_message=error_msg,
-                            metadata={
-                                'execution_mode': 'synchronous', 
-                                'error_type': 'task_error',
-                                'outer_exception': type(e).__name__,
-                                'traceback': error_trace[:1000]  # Truncate long tracebacks
-                            }
-                        )
-                        logger.info(f"[INFO] Job log {job_log_id} marked as failed due to outer error")
+        except Exception as e:
+            # This catches errors in the outer try block (e.g., job_log not found, etc.)
+            import traceback
+            error_trace = traceback.format_exc()
+            logger.error(f"[ERROR] ❌ Failed to execute schedule task (outer error): {e}")
+            logger.error(f"[ERROR] Error type: {type(e).__name__}")
+            logger.error(f"[ERROR] Error traceback:\n{error_trace}")
+            
+            # Try to update job log to failed if we have the ID
+            try:
+                if job_log_id:
+                    db.session.rollback()
+                    job_log = ScheduleJobLog.query.get(job_log_id)
+                    if job_log:
+                        # Only fail if status is not already completed
+                        if job_log.status not in ['completed', 'success']:
+                            error_msg = f"Task execution error ({type(e).__name__}): {str(e)}"
+                            job_log.fail_job(
+                                error_message=error_msg,
+                                metadata={
+                                    'execution_mode': 'synchronous', 
+                                    'error_type': 'task_error',
+                                    'outer_exception': type(e).__name__,
+                                    'traceback': error_trace[:1000]  # Truncate long tracebacks
+                                }
+                            )
+                            logger.info(f"[INFO] Job log {job_log_id} marked as failed due to outer error")
+                        else:
+                            logger.warning(f"[WARNING] Job {job_log_id} is already {job_log.status}, not changing to failed")
                     else:
-                        logger.warning(f"[WARNING] Job {job_log_id} is already {job_log.status}, not changing to failed")
-                else:
-                    logger.error(f"[ERROR] Job log {job_log_id} not found when trying to mark as failed (outer error)")
-        except Exception as update_error:
-            import traceback as tb
-            logger.error(f"[ERROR] Failed to update job log status: {update_error}")
-            logger.error(f"[ERROR] Update error traceback: {tb.format_exc()}")
-            # Best effort - don't fail if we can't update the log
-        
-        return False
+                        logger.error(f"[ERROR] Job log {job_log_id} not found when trying to mark as failed (outer error)")
+            except Exception as update_error:
+                import traceback as tb
+                logger.error(f"[ERROR] Failed to update job log status: {update_error}")
+                logger.error(f"[ERROR] Update error traceback: {tb.format_exc()}")
+                # Best effort - don't fail if we can't update the log
+            
+            return False
 

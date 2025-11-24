@@ -863,7 +863,8 @@ def fetch_schedule_data(schedule_def_id: str, credentials_path: Optional[str] = 
         # Import here to avoid circular dependencies
         # Use _os_func for all os operations to avoid UnboundLocalError
         # Add backend to path if not already there
-        backend_path = _os_func.path.join(_os_func.path.dirname(_os_func.path.dirname(_os_func.path.dirname(_os_func.path.dirname(_os_func.path.abspath(__file__))))), 'backend')
+        # File is at backend/refactor/services/google_sheets/service.py, so go up 3 levels to get backend
+        backend_path = _os_func.path.dirname(_os_func.path.dirname(_os_func.path.dirname(_os_func.path.abspath(__file__))))
         if backend_path not in sys.path:
             sys.path.insert(0, backend_path)
         

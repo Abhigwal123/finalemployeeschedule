@@ -2,10 +2,18 @@ import api from './api';
 
 export const scheduleService = {
   getDefinitions: async (page = 1, perPage = 20, filters = {}) => {
-    const response = await api.get('/schedule-definitions/', {  // Add trailing slash
-      params: { page, per_page: perPage, ...filters },
-    });
-    return response.data;
+    try {
+      const response = await api.get('/schedule-definitions/', {  // Add trailing slash
+        params: { page, per_page: perPage, ...filters },
+      });
+      console.log('[TRACE] Frontend: getDefinitions response:', response.data);
+      // Backend returns: { page, per_page, total, items: [...] }
+      return response.data;
+    } catch (error) {
+      console.error('[TRACE] Frontend: getDefinitions error:', error);
+      console.error('[TRACE] Frontend: Error response:', error.response?.data);
+      throw error;
+    }
   },
 
   getDefinitionById: async (id) => {

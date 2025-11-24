@@ -1,6 +1,6 @@
 # Tenant Model
-from app import db
-from datetime import datetime
+from ..extensions import db
+from datetime import datetime, date
 from typing import List
 import logging
 
@@ -60,8 +60,8 @@ class Tenant(db.Model):
         return {
             'tenantID': self.tenantID,
             'tenantName': self.tenantName,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at is not None and isinstance(self.created_at, (datetime, date)) else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at is not None and isinstance(self.updated_at, (datetime, date)) else None,
             'is_active': self.is_active,
             'users_count': self.users.count(),
             'departments_count': self.departments.count(),

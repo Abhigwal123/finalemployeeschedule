@@ -3,8 +3,8 @@ Sheet Cache Model
 Caches Google Sheets data in database to reduce API quota usage
 Uses tenant_id + month + sheet_name as cache key
 """
-from app import db
-from datetime import datetime, timedelta
+from ..extensions import db
+from datetime import datetime, timedelta, date
 from typing import Optional, Dict, Any
 import json
 import logging
@@ -199,7 +199,7 @@ class CachedSheetData(db.Model):
             'month': self.month,
             'sheet_name': self.sheet_name,
             'row_count': self.row_count,
-            'last_updated': self.last_updated.isoformat() if self.last_updated else None,
+            'last_updated': self.last_updated.isoformat() if self.last_updated is not None and isinstance(self.last_updated, (datetime, date)) else None,
             'is_expired': self.is_expired(),
             'spreadsheet_url': self.spreadsheet_url
         }

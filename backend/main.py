@@ -1,11 +1,52 @@
 """
 Flask Application Entry Point
-Run with: python flask_app.py --port 8000
+Run with: python main.py --port 8000
 """
 import sys
 import os
 import argparse
 import logging
+
+# 🔧 CRITICAL: Pre-import google-auth BEFORE adding backend to sys.path
+# This prevents our local backend/refactor/ folder from shadowing the installed google-auth package
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(backend_dir)  # Parent of backend/
+
+# Normalize paths for comparison
+normalized_backend_dir = os.path.normpath(backend_dir)
+normalized_paths = [os.path.normpath(p) for p in sys.path]
+_backend_was_in_path = normalized_backend_dir in normalized_paths
+
+# Temporarily remove backend_dir if it's already in sys.path
+if _backend_was_in_path:
+    idx = normalized_paths.index(normalized_backend_dir)
+    sys.path.pop(idx)
+
+# Pre-import google-auth while backend_dir is NOT in sys.path
+try:
+    import google.auth
+    import google.auth.credentials
+    import google.oauth2.service_account
+    # Also pre-import gspread
+    import gspread
+    _google_auth_preloaded = True
+except ImportError:
+    _google_auth_preloaded = False
+    # Will fail later if needed, but don't block startup
+
+# Restore backend_dir to sys.path if it was there
+if _backend_was_in_path:
+    sys.path.insert(0, backend_dir)
+
+# Add project root to sys.path so backend/ can be imported as a package
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# Also add backend_dir to sys.path for refactor.* imports
+# Note: google-auth is already in sys.modules, so it won't be shadowed
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+
 from backend.app import create_app
 
 # Configure logging for startup messages

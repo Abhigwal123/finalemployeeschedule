@@ -168,7 +168,8 @@ def get_schedule():
     Fetch schedule data for the authenticated employee
     """
     # HEAVY IMPORTS INSIDE FUNCTION - moved from top level
-    from app import db
+    # CRITICAL: Use relative import to ensure same db instance
+    from ..extensions import db
     from app.models import User
     from app.utils.trace_logger import (
         trace_api_request, trace_sheets_fetch, trace_response, trace_error
@@ -584,7 +585,8 @@ def get_employee_schedule(employee_id):
     This endpoint uses JWT authentication and fetches schedules from database cache
     """
     # HEAVY IMPORTS INSIDE FUNCTION
-    from app import db
+    # CRITICAL: Use relative import to ensure same db instance
+    from ..extensions import db
     from app.models import User
     from app.utils.trace_logger import trace_response, trace_error
     

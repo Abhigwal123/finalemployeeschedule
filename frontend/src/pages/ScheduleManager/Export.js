@@ -20,14 +20,15 @@ export default function Export() {
       console.log('[TRACE] ScheduleManager Export: Loading completed job logs...');
       
       // Filter for both 'completed' and 'success' statuses (both indicate completed jobs)
-      const response = await scheduleService.getJobLogs(1, 50, { status: 'completed' });
+      // Limit to last 10 logs
+      const response = await scheduleService.getJobLogs(1, 10, { status: 'completed' });
       // Note: Backend filters by exact status match, so we get 'completed' status
       // If backend supports multiple statuses, we could use: { status: ['completed', 'success'] }
       
       console.log('[TRACE] ScheduleManager Export: Response:', response);
       console.log('[DEBUG] Checking Schedule Logs → count:', response.data?.length || 0);
       
-      setJobLogs(response.data || []);
+      setJobLogs((response.data || []).slice(0, 10)); // Ensure only 10 logs are displayed
       
       console.log('[DEBUG] Frontend Response Rendered Successfully');
     } catch (err) {

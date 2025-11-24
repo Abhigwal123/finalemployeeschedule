@@ -15,9 +15,6 @@ export const ROUTES = {
   CLIENTADMIN_USERS: '/client-admin/users',
   CLIENTADMIN_PERMISSIONS: '/client-admin/permissions',
   
-  // Register route
-  REGISTER: '/register',
-  
   // ScheduleManager routes
   SCHEDULEMANAGER_SCHEDULING: '/schedule-manager/scheduling',
   SCHEDULEMANAGER_EXPORT: '/schedule-manager/export',

@@ -1,7 +1,8 @@
 # Permissions Routes - Matrix Format API
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app import db
+# CRITICAL: Use relative import to ensure same db instance
+from ..extensions import db
 from ..models import SchedulePermission, User, ScheduleDefinition
 from ..utils.role_utils import is_client_admin_role, is_schedule_manager_role
 import logging

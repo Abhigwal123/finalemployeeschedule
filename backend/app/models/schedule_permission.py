@@ -1,6 +1,6 @@
 # Schedule Permission Model
-from app import db
-from datetime import datetime, timedelta
+from ..extensions import db
+from datetime import datetime, timedelta, date
 from typing import List, Optional
 import logging
 
@@ -87,11 +87,11 @@ class SchedulePermission(db.Model):
             'scheduleDefID': self.scheduleDefID,
             'canRunJob': self.canRunJob,
             'granted_by': self.granted_by,
-            'granted_at': self.granted_at.isoformat() if self.granted_at else None,
-            'expires_at': self.expires_at.isoformat() if self.expires_at else None,
+            'granted_at': self.granted_at.isoformat() if self.granted_at is not None and isinstance(self.granted_at, (datetime, date)) else None,
+            'expires_at': self.expires_at.isoformat() if self.expires_at is not None and isinstance(self.expires_at, (datetime, date)) else None,
             'is_active': self.is_active,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at is not None and isinstance(self.created_at, (datetime, date)) else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at is not None and isinstance(self.updated_at, (datetime, date)) else None,
             'user': self.user.to_dict() if self.user else None,
             'schedule_definition': self.schedule_definition.to_dict() if self.schedule_definition else None
         }
