@@ -1,5 +1,5 @@
 import { Routes, Route } from 'react-router-dom';
-import ClientAdminLayout from '../layouts/ClientAdminLayout';
+import AdminLayout from '../layouts/AdminLayout';
 import ProtectedRoute from './ProtectedRoute';
 import {
   Dashboard,
@@ -9,11 +9,11 @@ import {
   PermissionMatrix,
 } from '../pages/ClientAdmin';
 
-export default function ClientAdminRoutes() {
+export default function AdminRoutes() {
   return (
     <ProtectedRoute requiredRole="ClientAdmin">
       <Routes>
-        <Route path="/*" element={<ClientAdminLayout />}>
+        <Route path="/*" element={<AdminLayout />}>
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="department" element={<Department />} />
           <Route path="users" element={<UserAccountManagement />} />

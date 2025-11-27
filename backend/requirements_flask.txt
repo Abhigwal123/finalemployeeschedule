@@ -6,6 +6,9 @@ flask-jwt-extended>=4.6.0
 flask-migrate>=4.0.5
 python-dotenv>=1.0.0
 
+# Production WSGI Server
+gunicorn>=21.2.0
+
 # Database
 sqlalchemy>=2.0.23
 alembic>=1.13.1

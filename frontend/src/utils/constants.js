@@ -9,11 +9,11 @@ export const ROUTES = {
   SYSADMIN_ORG: '/sysadmin/org',
   SYSADMIN_SCHEDULE: '/sysadmin/schedule',
   
-  // ClientAdmin routes
-  CLIENTADMIN_DASHBOARD: '/client-admin/dashboard',
-  CLIENTADMIN_DEPARTMENT: '/client-admin/department',
-  CLIENTADMIN_USERS: '/client-admin/users',
-  CLIENTADMIN_PERMISSIONS: '/client-admin/permissions',
+  // Admin routes (formerly ClientAdmin)
+  CLIENTADMIN_DASHBOARD: '/admin/dashboard',
+  CLIENTADMIN_DEPARTMENT: '/admin/department',
+  CLIENTADMIN_USERS: '/admin/users',
+  CLIENTADMIN_PERMISSIONS: '/admin/permissions',
   
   // ScheduleManager routes
   SCHEDULEMANAGER_SCHEDULING: '/schedule-manager/scheduling',

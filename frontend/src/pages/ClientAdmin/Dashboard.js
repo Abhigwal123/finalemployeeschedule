@@ -88,7 +88,7 @@ export default function Dashboard() {
     <div className="bg-gray-100 p-4 md:p-8">
       {/* C1.1: 頂部標題 */}
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">客戶管理員儀表板</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Admin 儀表板</h1>
         <p className="mt-1 text-lg text-gray-600">
           歡迎回來，{managerName} ({tenantName})
         </p>

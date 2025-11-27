@@ -6,7 +6,7 @@ import { ROUTES } from '../utils/constants';
 const getRoleDisplayName = (role) => {
   const roleMap = {
     SysAdmin: '系統管理員',
-    ClientAdmin: '客戶管理員',
+    ClientAdmin: 'Admin',
     ScheduleManager: '排班主管',
     Employee: '員工',
   };

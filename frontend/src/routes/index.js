@@ -5,7 +5,7 @@ import Logout from '../pages/Auth/Logout';
 import Register from '../pages/Auth/Register';
 import Profile from '../pages/Profile/Profile';
 import SysAdminRoutes from './SysAdminRoutes';
-import ClientAdminRoutes from './ClientAdminRoutes';
+import AdminRoutes from './AdminRoutes';
 import ScheduleManagerRoutes from './ScheduleManagerRoutes';
 import EmployeeRoutes from './EmployeeRoutes';
 import ProtectedRoute from './ProtectedRoute';
@@ -83,7 +83,9 @@ export default function AppRoutes() {
           />
           
           <Route path="/sysadmin/*" element={<SysAdminRoutes />} />
-          <Route path="/client-admin/*" element={<ClientAdminRoutes />} />
+          <Route path="/admin/*" element={<AdminRoutes />} />
+          {/* Legacy support for old client-admin URLs */}
+          <Route path="/client-admin/*" element={<Navigate to={ROUTES.CLIENTADMIN_DASHBOARD} replace />} />
           <Route path="/schedule-manager/*" element={<ScheduleManagerRoutes />} />
           <Route path="/employee/*" element={<EmployeeRoutes />} />
           

@@ -18,6 +18,7 @@ from ..utils.role_utils import (
     is_client_admin_role,
     normalize_role,
 )
+from ..utils.cors import apply_cors_headers as apply_env_cors_headers
 from datetime import datetime, timedelta
 import logging
 import os
@@ -28,6 +29,15 @@ auth_bp = Blueprint('auth', __name__)
 
 # Blacklist for revoked tokens (in production, use Redis)
 blacklisted_tokens = set()
+
+
+def _apply_auth_cors(response):
+    return apply_env_cors_headers(response)
+
+
+@auth_bp.after_request
+def _auth_after_request(response):
+    return _apply_auth_cors(response)
 
 
 @auth_bp.route('/register', methods=['POST'])
@@ -697,22 +707,6 @@ def login():
             'tenant': tenant_dict
         })
         
-        # Add CORS headers explicitly
-        origin = request.headers.get('Origin', 'http://localhost:5174')
-        allowed_origins = [
-            "http://localhost:5174",
-            "http://localhost:5173",
-            "http://localhost:3000",
-            "http://localhost:3001",
-            "http://127.0.0.1:5174",
-            "http://127.0.0.1:5173",
-        ]
-        if origin in allowed_origins or 'localhost:5174' in origin:
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept, X-Requested-With"
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-        
         return response, 200
         
     except KeyError as ke:
@@ -757,21 +751,7 @@ def login():
         # Always include trace in development
         error_response['trace'] = error_trace
         
-        # Create response with CORS headers
         response = jsonify(error_response)
-        origin = request.headers.get('Origin', 'http://localhost:5173')
-        allowed_origins = [
-            "http://localhost:5174",
-            "http://localhost:5173",
-            "http://localhost:3000",
-            "http://localhost:3001",
-            "http://127.0.0.1:5174",
-            "http://127.0.0.1:5173",
-        ]
-        if origin in allowed_origins or 'localhost' in origin:
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-        
         logger.error(f"[LOGIN] Returning error response: {error_response}")
         return response, 500
 
@@ -815,21 +795,6 @@ def get_current_user():
         # Token invalid or missing - but still return proper CORS headers
         logger.warning(f"JWT verification failed for /auth/me: {str(e)}")
         response = jsonify({'error': 'Authentication required', 'details': str(e)})
-        # CORS headers will be added by after_request handler, but add explicitly here too
-        origin = request.headers.get('Origin', 'http://localhost:5174')
-        allowed_origins = [
-            "http://localhost:5174",
-            "http://localhost:5173",
-            "http://localhost:3000",
-            "http://localhost:3001",
-            "http://127.0.0.1:5174",
-            "http://127.0.0.1:5173",
-        ]
-        if origin in allowed_origins or 'localhost:5174' in origin:
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept, X-Requested-With"
-            response.headers["Access-Control-Allow-Credentials"] = "true"
         return response, 401
     
     try:
@@ -837,34 +802,10 @@ def get_current_user():
         
         if not user:
             response = jsonify({'error': 'User not found'})
-            origin = request.headers.get('Origin', 'http://localhost:5174')
-            allowed_origins = [
-                "http://localhost:5174",
-                "http://localhost:5173",
-                "http://localhost:3000",
-                "http://localhost:3001",
-                "http://127.0.0.1:5174",
-                "http://127.0.0.1:5173",
-            ]
-            if origin in allowed_origins or 'localhost:5174' in origin:
-                response.headers["Access-Control-Allow-Origin"] = origin
-                response.headers["Access-Control-Allow-Credentials"] = "true"
             return response, 404
         
         if not user.is_active():
             response = jsonify({'error': 'Account is inactive'})
-            origin = request.headers.get('Origin', 'http://localhost:5174')
-            allowed_origins = [
-                "http://localhost:5174",
-                "http://localhost:5173",
-                "http://localhost:3000",
-                "http://localhost:3001",
-                "http://127.0.0.1:5174",
-                "http://127.0.0.1:5173",
-            ]
-            if origin in allowed_origins or 'localhost:5174' in origin:
-                response.headers["Access-Control-Allow-Origin"] = origin
-                response.headers["Access-Control-Allow-Credentials"] = "true"
             return response, 401
         
         response = jsonify({
@@ -872,38 +813,11 @@ def get_current_user():
             'user': user.to_dict(),
             'tenant': user.tenant.to_dict() if user.tenant else None
         })
-        # Add CORS headers explicitly
-        origin = request.headers.get('Origin', 'http://localhost:5174')
-        allowed_origins = [
-            "http://localhost:5174",
-            "http://localhost:5173",
-            "http://localhost:3000",
-            "http://localhost:3001",
-            "http://127.0.0.1:5174",
-            "http://127.0.0.1:5173",
-        ]
-        if origin in allowed_origins or 'localhost:5174' in origin:
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept, X-Requested-With"
-            response.headers["Access-Control-Allow-Credentials"] = "true"
         return response, 200
         
     except Exception as e:
         logger.error(f"Get current user error: {str(e)}")
         response = jsonify({'error': 'Failed to get user information', 'details': str(e)})
-        origin = request.headers.get('Origin', 'http://localhost:5174')
-        allowed_origins = [
-            "http://localhost:5174",
-            "http://localhost:5173",
-            "http://localhost:3000",
-            "http://localhost:3001",
-            "http://127.0.0.1:5174",
-            "http://127.0.0.1:5173",
-        ]
-        if origin in allowed_origins or 'localhost:5174' in origin:
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
         return response, 500
 
 @auth_bp.route('/change-password', methods=['POST'])

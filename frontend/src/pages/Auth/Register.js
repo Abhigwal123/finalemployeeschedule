@@ -21,7 +21,7 @@ export default function Register() {
   });
 
   // Get available roles based on current user's role
-  // Hierarchy: ClientAdmin > SysAdmin > ScheduleManager > Department_Employee
+  // Hierarchy: Admin (ClientAdmin) > SysAdmin > ScheduleManager > Department_Employee
   const getAvailableRoles = () => {
     if (!isAuthenticated || !user) {
       // Public registration - only Employee
@@ -33,9 +33,9 @@ export default function Register() {
     switch (userRole) {
       case 'ClientAdmin':
       case 'Client_Admin':
-        // ClientAdmin can register: ClientAdmin, SysAdmin, ScheduleManager, Department_Employee
+        // Admin (ClientAdmin) can register: ClientAdmin, SysAdmin, ScheduleManager, Department_Employee
         return [
-          { value: 'ClientAdmin', label: '客戶管理員' },
+          { value: 'ClientAdmin', label: 'Admin' },
           { value: 'SysAdmin', label: '系統管理員' },
           { value: 'ScheduleManager', label: '排班主管' },
           { value: 'Department_Employee', label: '部門員工' },

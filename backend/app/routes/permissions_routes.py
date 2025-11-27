@@ -5,11 +5,21 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from ..extensions import db
 from ..models import SchedulePermission, User, ScheduleDefinition
 from ..utils.role_utils import is_client_admin_role, is_schedule_manager_role
+from ..utils.cors import apply_cors_headers as apply_env_cors_headers
 import logging
 
 logger = logging.getLogger(__name__)
 
 permissions_bp = Blueprint('permissions', __name__)
+
+
+def _apply_permissions_cors(response):
+    return apply_env_cors_headers(response)
+
+
+@permissions_bp.after_request
+def _permissions_after_request(response):
+    return _apply_permissions_cors(response)
 
 def get_current_user():
     """Get current authenticated user"""
@@ -69,13 +79,7 @@ def get_permissions_matrix():
         verify_jwt_in_request()
     except Exception as jwt_err:
         logger.error(f"JWT verification failed: {str(jwt_err)}")
-        origin = request.headers.get('Origin', 'http://localhost:5173')
         response = jsonify({'error': 'Authentication required', 'details': 'Invalid or missing token'})
-        if 'localhost' in origin or '127.0.0.1' in origin:
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept, X-Requested-With"
         return response, 401
     
     try:
@@ -83,13 +87,7 @@ def get_permissions_matrix():
         current_user = get_current_user()
         if not current_user:
             logger.error(f"[ERROR] GET /permissions/matrix - User not found")
-            origin = request.headers.get('Origin', 'http://localhost:5173')
             response = jsonify({'error': 'User not found'})
-            if 'localhost' in origin or '127.0.0.1' in origin:
-                response.headers["Access-Control-Allow-Origin"] = origin
-                response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept, X-Requested-With"
             return response, 404
         
         logger.info(f"[TRACE] GET /permissions/matrix - User: {current_user.username}, Role: {current_user.role}, Tenant: {current_user.tenantID}")
@@ -108,13 +106,7 @@ def get_permissions_matrix():
         # If no ScheduleManagers found, return empty array with proper CORS
         if not managers:
             logger.info(f"[INFO] No ScheduleManager users found for tenant {current_user.tenantID}")
-            origin = request.headers.get('Origin', 'http://localhost:5173')
             response = jsonify([])
-            if 'localhost' in origin or '127.0.0.1' in origin:
-                response.headers["Access-Control-Allow-Origin"] = origin
-                response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept, X-Requested-With"
             logger.info(f"[TRACE] GET /permissions/matrix - Returning empty array (200 OK)")
             return response, 200
         
@@ -218,17 +210,7 @@ def get_permissions_matrix():
                 'permissions': permissions
             })
         
-        origin = request.headers.get('Origin', 'http://localhost:5173')
-        # Return wrapped format for consistency (frontend handles both formats)
         response = jsonify({"success": True, "permissions": matrix})
-        # Always set CORS headers for all origins (development and production)
-        if 'localhost' in origin or '127.0.0.1' in origin:
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-        else:
-            response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept, X-Requested-With"
         logger.info(f"[SUCCESS] GET /permissions/matrix - Returning {len(matrix)} managers for tenant {current_user.tenantID}")
         logger.info(f"[TRACE] GET /permissions/matrix - Response status: 200 OK")
         print("[TRACE] ✅ Returning Permission Matrix Data for ClientAdmin")
@@ -238,13 +220,7 @@ def get_permissions_matrix():
         logger.error(f"Get permissions matrix error: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
-        from flask import request as req
-        origin = req.headers.get('Origin', 'http://localhost:5173')
         response = jsonify({'error': 'Failed to retrieve permissions matrix', 'details': str(e)})
-        # Allow any localhost origin in development
-        if 'localhost' in origin or '127.0.0.1' in origin:
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
         return response, 500
 
 @permissions_bp.route('/update', methods=['PUT'])
@@ -264,13 +240,7 @@ def update_permissions_bulk():
         verify_jwt_in_request()
     except Exception as jwt_err:
         logger.error(f"JWT verification failed: {str(jwt_err)}")
-        origin = request.headers.get('Origin', 'http://localhost:5173')
         response = jsonify({'error': 'Authentication required', 'details': 'Invalid or missing token'})
-        if 'localhost' in origin or '127.0.0.1' in origin:
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept, X-Requested-With"
         return response, 401
     
     try:
@@ -278,13 +248,7 @@ def update_permissions_bulk():
         current_user = get_current_user()
         if not current_user:
             logger.error(f"[ERROR] PUT /permissions/update - User not found")
-            origin = request.headers.get('Origin', 'http://localhost:5173')
             response = jsonify({'error': 'User not found'})
-            if 'localhost' in origin or '127.0.0.1' in origin:
-                response.headers["Access-Control-Allow-Origin"] = origin
-                response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept, X-Requested-With"
             return response, 404
         
         logger.info(f"[TRACE] PUT /permissions/update - User: {current_user.username}, Role: {current_user.role}, Tenant: {current_user.tenantID}")
@@ -292,25 +256,13 @@ def update_permissions_bulk():
         # Check role permissions - only ClientAdmin (platform) or tenant admins can edit
         if not (is_client_admin_role(current_user.role) or current_user.role in ['admin']):
             logger.warning(f"[WARN] PUT /permissions/update - User {current_user.username} (role: {current_user.role}) attempted to update permissions")
-            origin = request.headers.get('Origin', 'http://localhost:5173')
             response = jsonify({'error': 'Permission denied. Only ClientAdmin users can update permissions.'})
-            if 'localhost' in origin or '127.0.0.1' in origin:
-                response.headers["Access-Control-Allow-Origin"] = origin
-                response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept, X-Requested-With"
             return response, 403
         
         data = request.get_json()
         if not data:
             logger.error(f"[ERROR] PUT /permissions/update - No data provided")
-            origin = request.headers.get('Origin', 'http://localhost:5173')
             response = jsonify({'error': 'No data provided'})
-            if 'localhost' in origin or '127.0.0.1' in origin:
-                response.headers["Access-Control-Allow-Origin"] = origin
-                response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept, X-Requested-With"
             return response, 400
         
         user_id = data.get('user_id')
@@ -320,38 +272,20 @@ def update_permissions_bulk():
         
         if not user_id:
             logger.error(f"[ERROR] PUT /permissions/update - user_id is required")
-            origin = request.headers.get('Origin', 'http://localhost:5173')
             response = jsonify({'error': 'user_id is required'})
-            if 'localhost' in origin or '127.0.0.1' in origin:
-                response.headers["Access-Control-Allow-Origin"] = origin
-                response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept, X-Requested-With"
             return response, 400
         
         # Verify user belongs to same tenant
         target_user = User.query.get(user_id)
         if not target_user:
             logger.error(f"[ERROR] PUT /permissions/update - Target user {user_id} not found")
-            origin = request.headers.get('Origin', 'http://localhost:5173')
             response = jsonify({'error': 'Target user not found'})
-            if 'localhost' in origin or '127.0.0.1' in origin:
-                response.headers["Access-Control-Allow-Origin"] = origin
-                response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept, X-Requested-With"
             return response, 404
         
         # Tenant check - ClientAdmin can edit any tenant, others are restricted
         if not is_client_admin_role(current_user.role) and target_user.tenantID != current_user.tenantID:
             logger.warning(f"[WARN] PUT /permissions/update - Cross-tenant update attempt: {current_user.username} (tenant: {current_user.tenantID}) tried to update {target_user.username} (tenant: {target_user.tenantID})")
-            origin = request.headers.get('Origin', 'http://localhost:5173')
             response = jsonify({'error': 'Cross-tenant update forbidden'})
-            if 'localhost' in origin or '127.0.0.1' in origin:
-                response.headers["Access-Control-Allow-Origin"] = origin
-                response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept, X-Requested-With"
             return response, 403
         
         # Get all active schedules for this tenant
@@ -424,21 +358,12 @@ def update_permissions_bulk():
         
         logger.info(f"[SUCCESS] PUT /permissions/update - Updated permissions for user {user_id}: {updated_count} updated, {created_count} created")
         
-        origin = request.headers.get('Origin', 'http://localhost:5173')
         response = jsonify({
             'success': True,
             'message': 'Permissions updated successfully',
             'updated': updated_count,
             'created': created_count
         })
-        # Always set CORS headers
-        if 'localhost' in origin or '127.0.0.1' in origin:
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-        else:
-            response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept, X-Requested-With"
         logger.info(f"[TRACE] PUT /permissions/update - Response status: 200 OK")
         return response, 200
         
@@ -447,13 +372,7 @@ def update_permissions_bulk():
         logger.error(f"Update permissions bulk error: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
-        from flask import request as req
-        origin = req.headers.get('Origin', 'http://localhost:5173')
         response = jsonify({'error': 'Failed to update permissions', 'details': str(e)})
-        # Allow any localhost origin in development
-        if 'localhost' in origin or '127.0.0.1' in origin:
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
         return response, 500
 
 # Add a minimal test route to verify blueprint is working

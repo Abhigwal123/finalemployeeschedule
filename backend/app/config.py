@@ -16,7 +16,18 @@ PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, os.pardir))
 
 # Database location: Use instance folder (as requested)
 INSTANCE_DIR = os.path.join(BASE_DIR, 'instance')
-os.makedirs(INSTANCE_DIR, exist_ok=True)
+# Create instance directory with error handling for permission issues
+try:
+    os.makedirs(INSTANCE_DIR, exist_ok=True)
+except PermissionError:
+    # If permission denied, try to use /app/instance as fallback (for Docker)
+    INSTANCE_DIR = os.getenv('INSTANCE_DIR', '/app/instance')
+    try:
+        os.makedirs(INSTANCE_DIR, exist_ok=True)
+    except PermissionError:
+        # Last resort: use /tmp/instance
+        INSTANCE_DIR = '/tmp/instance'
+        os.makedirs(INSTANCE_DIR, exist_ok=True)
 
 # Database file path - always absolute, in instance folder
 DEFAULT_DB_PATH = os.path.join(INSTANCE_DIR, 'scheduling_system.db')
@@ -63,11 +74,26 @@ class Config:
         'pool_pre_ping': True,  # Verify connections before using
     }
     
-    # CORS - Include all common development ports
-    BACKEND_CORS_ORIGINS = os.getenv(
-        "BACKEND_CORS_ORIGINS", 
-        "http://localhost:3000,http://localhost:3001,http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174"
-    ).split(",")
+    # CORS Configuration
+    # Development CORS origins (commented out - use environment variables for production)
+    # BACKEND_CORS_ORIGINS = os.getenv(
+    #     "BACKEND_CORS_ORIGINS", 
+    #     "http://localhost:3000,http://localhost:3001,http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174"
+    # ).split(",")
+    
+    # Production CORS origins - configured via environment variables
+    # Default production origins (use CORS_ALLOWED_ORIGINS env var in Docker)
+    cors_origins_env = os.getenv("CORS_ALLOWED_ORIGINS", "")
+    if cors_origins_env:
+        BACKEND_CORS_ORIGINS = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+    else:
+        # Default production origins if CORS_ALLOWED_ORIGINS not set
+        BACKEND_CORS_ORIGINS = [
+            "http://82.165.209.92:8080",
+            "http://82.165.209.92:8081",
+            "https://82.165.209.92:8080",
+            "https://82.165.209.92:8081"
+        ]
     
     # Celery / Redis
     # Use Redis database 0 for broker and database 1 for result backend

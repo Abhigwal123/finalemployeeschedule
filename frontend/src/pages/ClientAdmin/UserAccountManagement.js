@@ -146,7 +146,7 @@ export default function UserAccountManagement() {
     
     if (userRole === 'ClientAdmin' || userRole === 'Client_Admin') {
       return [
-        { value: 'ClientAdmin', label: '客戶管理員' },
+        { value: 'ClientAdmin', label: 'Admin' },
         { value: 'SysAdmin', label: '系統管理員' },
         { value: 'ScheduleManager', label: '排班主管' },
         { value: 'Department_Employee', label: '部門員工' },

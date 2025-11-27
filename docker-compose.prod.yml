@@ -23,7 +23,7 @@ services:
       - PYTHONPATH=/app/backend:/app
       # DATABASE_URL is inherited from docker-compose.yml (includes charset=utf8mb4)
     command: >
-      sh -c "cd /app/backend && alembic upgrade head && python main.py --host 0.0.0.0 --port 8000"
+      sh -c "cd /app/backend && alembic upgrade head && gunicorn --bind 0.0.0.0:8000 --workers=4 --threads=4 --timeout=120 --access-logfile - --error-logfile - --log-level info wsgi:application"
     # Remove debug port exposure in production (use nginx reverse proxy instead)
     ports: []  # Remove port exposure in production
     # Mount service account credentials (read-only)

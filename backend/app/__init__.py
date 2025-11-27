@@ -1,12 +1,14 @@
 # Multi-Tenant Scheduling System - Flask Backend
 # Main Application Factory
-from flask import Flask, jsonify, request, make_response, Response
-from .config import Config
 from dotenv import load_dotenv
+load_dotenv() 
+from flask import Flask, jsonify, request, make_response, Response, current_app
+from .config import Config
 import os
 import pymysql
 from .extensions import db, jwt, cors
 from .utils.logger import configure_logging
+from .utils.cors import get_request_origin, apply_cors_headers as apply_env_cors_headers
 
 # Ensure the package is addressable as both "backend.app" and "app" so that
 # imports like "from app.models import ..." and "from backend.app.models import ..."
@@ -88,39 +90,54 @@ def create_app(config_object: type[Config] | None = None, *, with_celery: bool =
     # Load environment variables from .env if present
     # Try to load from project root first (for consistency with Docker Compose)
     # Then fall back to current directory
-    try:
-        import pathlib
-        # Get project root (parent of backend/)
-        backend_dir = pathlib.Path(__file__).parent.parent  # backend/app -> backend
-        project_root = backend_dir.parent  # backend -> project root
-        env_path = project_root / '.env'
-        
-        # Try project root first
-        if env_path.exists():
-            load_dotenv(env_path)
-        else:
-            # Fall back to current directory (for backward compatibility)
-            load_dotenv()
-    except Exception:
-        # If path resolution fails, try default location
-        try:
-            load_dotenv()
-        except Exception:
-            pass
+    # --- FIXED ENV LOADER (PLACE THIS IN create_app BEFORE app = Flask()) ---
+    import pathlib
+    from dotenv import load_dotenv
+
+    backend_dir = pathlib.Path(__file__).parent.parent        # backend/
+    backend_env = backend_dir / ".env"                       # backend/.env
+
+    if backend_env.exists():
+        print(f"[ENV] Loaded backend/.env: {backend_env}")
+        load_dotenv(backend_env)
+    else:
+        print(f"[ENV WARNING] backend/.env NOT FOUND → CORS WILL BREAK")
+        load_dotenv()   # fallback
+
 
     app = Flask(__name__)
     app.config.from_object(config_object or Config)
 
-    # Hard-set CORS allowed origins to match frontend
-    allowed_origins = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173"
-    ]
-    app.config["CORS_ALLOWED_ORIGINS"] = allowed_origins
+    # CRITICAL: Load CORS origins from environment variables
+    # Support both BACKEND_CORS_ORIGINS (from Config) and CORS_ALLOWED_ORIGINS (from env)
+    # BACKEND_CORS_ORIGINS is set in Config class from BACKEND_CORS_ORIGINS env var
+    backend_cors_origins = app.config.get("BACKEND_CORS_ORIGINS", [])
+    cors_allowed_origins_env = os.getenv("CORS_ALLOWED_ORIGINS", "")
     
-    # Phase 1 Diagnostic: Print resolved database URI
+    # Parse CORS_ALLOWED_ORIGINS from env if provided (comma-separated)
+    if cors_allowed_origins_env:
+        cors_origins_from_env = [origin.strip() for origin in cors_allowed_origins_env.split(",") if origin.strip()]
+        if cors_origins_from_env:
+            app.config["CORS_ALLOWED_ORIGINS"] = cors_origins_from_env
+        else:
+            # Fallback to BACKEND_CORS_ORIGINS from config
+            app.config["CORS_ALLOWED_ORIGINS"] = backend_cors_origins if isinstance(backend_cors_origins, list) else []
+    else:
+        # Use BACKEND_CORS_ORIGINS from config (already parsed from env in Config class)
+        if isinstance(backend_cors_origins, list):
+            # Clean up any empty strings from the list
+            app.config["CORS_ALLOWED_ORIGINS"] = [origin.strip() for origin in backend_cors_origins if origin.strip()]
+        else:
+            app.config["CORS_ALLOWED_ORIGINS"] = []
+    
+    # Log CORS configuration for debugging
     import logging
     logger = logging.getLogger(__name__)
+    joined_origins = ", ".join(app.config.get("CORS_ALLOWED_ORIGINS", [])) or "<none>"
+    logger.info(f"[CORS INIT] Loaded CORS origins from environment: {joined_origins}")
+    print(f"[CORS INIT] Loaded CORS origins from environment: {joined_origins}")
+    
+    # Phase 1 Diagnostic: Print resolved database URI
     logger.info(f"[DIAGNOSTIC] SQLALCHEMY_DATABASE_URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
     logger.info(f"[DIAGNOSTIC] Flask working directory: {os.getcwd()}")
     print(f"[DIAGNOSTIC] SQLALCHEMY_DATABASE_URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
@@ -345,36 +362,21 @@ def create_app(config_object: type[Config] | None = None, *, with_celery: bool =
     def unauthorized_callback(callback):
         """JWT unauthorized callback - MUST include CORS headers"""
         response = jsonify({'error': 'Authentication required', 'details': str(callback)})
-        allow_origin = _determine_cors_origin()
-        response.headers["Access-Control-Allow-Origin"] = allow_origin
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Origin, Accept"
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Max-Age"] = "3600"
+        response = apply_env_cors_headers(response)
         return response, 401
     
     @jwt.invalid_token_loader
     def invalid_token_callback(callback):
         """JWT invalid token callback - MUST include CORS headers"""
         response = jsonify({'error': 'Invalid token', 'details': str(callback)})
-        allow_origin = _determine_cors_origin()
-        response.headers["Access-Control-Allow-Origin"] = allow_origin
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Origin, Accept"
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Max-Age"] = "3600"
+        response = apply_env_cors_headers(response)
         return response, 422
     
     @jwt.expired_token_loader
     def expired_token_callback(jwt_header, jwt_payload):
         """JWT expired token callback - MUST include CORS headers"""
         response = jsonify({'error': 'Token has expired', 'details': 'Please login again'})
-        allow_origin = _determine_cors_origin()
-        response.headers["Access-Control-Allow-Origin"] = allow_origin
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Origin, Accept"
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Max-Age"] = "3600"
+        response = apply_env_cors_headers(response)
         return response, 401
     
     # CRITICAL: Override JWT error handlers to check for OPTIONS first
@@ -384,12 +386,7 @@ def create_app(config_object: type[Config] | None = None, *, with_celery: bool =
         try:
             if hasattr(request, 'method') and request.method == "OPTIONS":
                 resp = make_response(("", 200))
-                allow_origin = _determine_cors_origin()
-                resp.headers["Access-Control-Allow-Origin"] = allow_origin
-                resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-                resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Origin, Accept"
-                resp.headers["Access-Control-Allow-Credentials"] = "true"
-                resp.headers["Access-Control-Max-Age"] = "3600"
+                resp = apply_env_cors_headers(resp)
                 return resp
         except:
             pass
@@ -401,12 +398,7 @@ def create_app(config_object: type[Config] | None = None, *, with_celery: bool =
         try:
             if hasattr(request, 'method') and request.method == "OPTIONS":
                 resp = make_response(("", 200))
-                allow_origin = _determine_cors_origin()
-                resp.headers["Access-Control-Allow-Origin"] = allow_origin
-                resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-                resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Origin, Accept"
-                resp.headers["Access-Control-Allow-Credentials"] = "true"
-                resp.headers["Access-Control-Max-Age"] = "3600"
+                resp = apply_env_cors_headers(resp)
                 return resp
         except:
             pass
@@ -418,12 +410,7 @@ def create_app(config_object: type[Config] | None = None, *, with_celery: bool =
         try:
             if hasattr(request, 'method') and request.method == "OPTIONS":
                 resp = make_response(("", 200))
-                allow_origin = _determine_cors_origin()
-                resp.headers["Access-Control-Allow-Origin"] = allow_origin
-                resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-                resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Origin, Accept"
-                resp.headers["Access-Control-Allow-Credentials"] = "true"
-                resp.headers["Access-Control-Max-Age"] = "3600"
+                resp = apply_env_cors_headers(resp)
                 return resp
         except:
             pass
@@ -503,63 +490,53 @@ def create_app(config_object: type[Config] | None = None, *, with_celery: bool =
                 import time
                 time.sleep(retry_delay)
 
-    def _determine_cors_origin() -> str:
-        """Determine CORS origin - returns exact match from allowed origins, never wildcard."""
-        origin = request.headers.get("Origin")
-        # Hard-set allowed origins to match frontend
-        allowed_origins = [
-            "http://localhost:5173",
-            "http://127.0.0.1:5173"
-        ]
-        if origin and origin in allowed_origins:
-            return origin
-        # Return first allowed origin as fallback (never "*")
-        return allowed_origins[0] if allowed_origins else "http://localhost:5173"
+    # CRITICAL: Initialize CORS BEFORE blueprint registration
+    # Flask-CORS must be initialized before routes are registered so it can wrap all routes
+    # This ensures CORS headers are applied to all endpoints including /api/v1/auth/login
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Get CORS origins from config (already loaded from environment)
+    cors_origins = app.config.get("CORS_ALLOWED_ORIGINS", [])
+    
+    # CRITICAL: Configure CORS with specific origins (NOT wildcard) to support withCredentials
+    # Wildcard (*) cannot be used with credentials, so we must specify exact origins
+    # Initialize CORS BEFORE blueprints so it wraps all registered routes
+    cors.init_app(
+        app,
+        supports_credentials=True,
+        origins=cors_origins,
+        expose_headers=["Content-Type", "Authorization"],
+        allow_headers=["Content-Type", "Authorization"],
+        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    )
+    
+    joined_origins = ", ".join(cors_origins) or "<none>"
+    logger.info(f"[CORS] Flask-CORS initialized BEFORE blueprints with origins: {joined_origins}")
+    print(f"[CORS] Flask-CORS initialized BEFORE blueprints with origins: {joined_origins}")
 
     # CRITICAL: Add global preflight handler BEFORE blueprint registration
     # This intercepts OPTIONS requests before any route logic runs, preventing 500 errors
+    # Note: Flask-CORS should handle OPTIONS automatically, but this provides a fallback
     @app.before_request
     def handle_preflight():
         """Global CORS preflight handler - runs FIRST before any route logic or JWT checks"""
         if request.method == "OPTIONS":
             response = make_response("", 200)
-            allow_origin = _determine_cors_origin()
-            response.headers["Access-Control-Allow-Origin"] = allow_origin
-            response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-Requested-With"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+            origin = request.headers.get("Origin")
+            allowed = app.config.get("CORS_ALLOWED_ORIGINS", []) or []
+            if origin and origin in allowed:
+                response.headers["Access-Control-Allow-Origin"] = origin
+
             response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
             return response
         return None
 
+    # Register blueprints AFTER CORS is initialized
+    # This ensures Flask-CORS wraps all registered routes
     register_blueprints(app)
-    
-    # CRITICAL: Initialize CORS AFTER blueprints are registered
-    # This ensures all routes are available when CORS is configured
-    # Global fallback OPTIONS handler must be registered AFTER blueprints
-    # to catch any unmatched OPTIONS requests
-    import logging
-    logger = logging.getLogger(__name__)
-
-    # Hard-set CORS allowed origins to match frontend
-    cors_allowed_origins = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173"
-    ]
-    app.config["CORS_ALLOWED_ORIGINS"] = cors_allowed_origins
-
-    # CRITICAL: Configure CORS with specific origins (NOT wildcard) to support withCredentials
-    # Wildcard (*) cannot be used with credentials, so we must specify exact origins
-    # Canonical CORS configuration - ensures ALL endpoints return correct Access-Control-Allow-Origin
-    cors.init_app(
-        app,
-        supports_credentials=True,
-        origins=cors_allowed_origins,
-        expose_headers=["Content-Type", "Authorization"],
-        allow_headers=["Content-Type", "Authorization"],
-        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    )
-    logger.info(f"[CORS] Backend enforcing origins: {', '.join(cors_allowed_origins)}")
-    print(f"[CORS] Backend enforcing origins: {', '.join(cors_allowed_origins)}")
     
     # Global fallback OPTIONS handler for any unmatched routes
     # This catches any OPTIONS requests that weren't handled by blueprint handlers
@@ -571,12 +548,8 @@ def create_app(config_object: type[Config] | None = None, *, with_celery: bool =
             logger.info(f"[TRACE] ✅ OPTIONS handler active for /{path}")
             print(f"[TRACE] ✅ OPTIONS handler active for /{path}")
             from flask import make_response
-            allow_origin = _determine_cors_origin()
             response = make_response(("", 200))
-            response.headers["Access-Control-Allow-Origin"] = allow_origin
-            response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-Requested-With"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response = apply_env_cors_headers(response)
             return response
         except Exception as e:
             logger.error(f"[ERROR] Fallback OPTIONS handler failed: {e}")
@@ -585,27 +558,14 @@ def create_app(config_object: type[Config] | None = None, *, with_celery: bool =
             # Return minimal response even on error
             from flask import Response
             resp = Response("", status=200)
-            resp.headers["Access-Control-Allow-Origin"] = _determine_cors_origin()
-            resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-            resp.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-Requested-With"
-            resp.headers["Access-Control-Allow-Credentials"] = "true"
+            resp = apply_env_cors_headers(resp)
             return resp
     
     # Universal CORS safeguard - ensures headers are always correct (overrides any wildcard "*")
     @app.after_request
     def after_request_cors(response):
         """Universal CORS handler - ALWAYS sets correct origin (never wildcard) for all responses"""
-        # CRITICAL: Always override Access-Control-Allow-Origin to ensure exact match (never "*")
-        allow_origin = _determine_cors_origin()
-        response.headers["Access-Control-Allow-Origin"] = allow_origin  # Override, don't setdefault
-        
-        # Ensure other CORS headers are present
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-        response.headers["Access-Control-Max-Age"] = "3600"
-        
-        return response
+        return apply_env_cors_headers(response)
     
     # CRITICAL: Verify database connection at startup (runs immediately after app creation)
     # This ensures database is accessible before any requests
@@ -660,8 +620,9 @@ def create_app(config_object: type[Config] | None = None, *, with_celery: bool =
             logger.info("=" * 80)
             
             # Log CORS configuration
-            logger.info("[CORS] Backend enforcing origins: http://localhost:5173, http://127.0.0.1:5173")
-            print("[CORS] Backend enforcing origins: http://localhost:5173, http://127.0.0.1:5173")
+            joined_origins = ", ".join(app.config.get("CORS_ALLOWED_ORIGINS", [])) or "<none>"
+            logger.info(f"[CORS] Backend enforcing origins: {joined_origins}")
+            print(f"[CORS] Backend enforcing origins: {joined_origins}")
             
         except Exception as e:
             logger.error("=" * 80)
@@ -812,11 +773,7 @@ def create_app(config_object: type[Config] | None = None, *, with_celery: bool =
         # Add CORS headers to error response
         try:
             response = jsonify(error_response)
-            allow_origin = _determine_cors_origin()
-            response.headers["Access-Control-Allow-Origin"] = allow_origin
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Origin, Accept"
-            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response = apply_env_cors_headers(response)
             
             # CRITICAL: Verify traceback is in response by checking response data
             import json as json_module
@@ -827,11 +784,7 @@ def create_app(config_object: type[Config] | None = None, *, with_celery: bool =
                     # Force add it
                     response_data['traceback'] = traceback_in_response
                     response = jsonify(response_data)
-                    allow_origin = _determine_cors_origin()
-                    response.headers["Access-Control-Allow-Origin"] = allow_origin
-                    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-                    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Origin, Accept"
-                    response.headers["Access-Control-Allow-Credentials"] = "true"
+                    response = apply_env_cors_headers(response)
             except:
                 pass
             
@@ -857,9 +810,7 @@ def create_app(config_object: type[Config] | None = None, *, with_celery: bool =
                     status=500,
                     mimetype='text/plain'
                 )
-            allow_origin = _determine_cors_origin()
-            response.headers["Access-Control-Allow-Origin"] = allow_origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response = apply_env_cors_headers(response)
             return response
     
     # Add request logging middleware to see all requests

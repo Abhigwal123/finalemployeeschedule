@@ -86,7 +86,7 @@ export default function Login() {
         return '/sysadmin/dashboard';
       case 'clientadmin':
       case 'client_admin':
-        return '/client-admin/dashboard';
+        return '/admin/dashboard';
       case 'schedulemanager':
       case 'schedule_manager':
         return '/schedule-manager/scheduling';

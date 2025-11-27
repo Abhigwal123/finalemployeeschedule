@@ -28,12 +28,12 @@ export const roleService = {
           },
           {
             role: 'ClientAdmin',
-            label: '客戶管理員',
+            label: 'Admin',
             badge: { bg: 'bg-purple-100', text: 'text-purple-800' },
           },
           {
             role: 'Client_Admin',
-            label: '客戶管理員',
+            label: 'Admin',
             badge: { bg: 'bg-purple-100', text: 'text-purple-800' },
           },
         ],
