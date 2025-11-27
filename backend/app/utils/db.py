@@ -30,12 +30,6 @@ def create_tables(app):
         db.create_all()
         logger.info("Database tables created successfully")
 
-def drop_tables(app):
-    """Drop all database tables"""
-    with app.app_context():
-        db.drop_all()
-        logger.info("Database tables dropped successfully")
-
 def seed_initial_data(app):
     """Seed database with initial data including default users (admin/editor/viewer)"""
     with app.app_context():
