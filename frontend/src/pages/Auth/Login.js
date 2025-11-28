@@ -17,7 +17,7 @@ export default function Login() {
     let isMounted = true;
     
     const checkBackend = async () => {
-      const apiBaseURL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1';
+      const apiBaseURL = import.meta.env.VITE_API_BASE_URL;
       console.log('[TRACE] Checking backend health at:', apiBaseURL);
       
       try {
@@ -201,7 +201,7 @@ export default function Login() {
                 </svg>
                 <span className="text-sm text-red-800 font-medium">無法連接到伺服器</span>
               </div>
-              <p className="text-xs text-red-600 mt-1">請確認後端服務是否正在運行 (http://127.0.0.1:8000)</p>
+              <p className="text-xs text-red-600 mt-1">請確認後端服務是否正在運行</p>
               <p className="text-xs text-gray-500 mt-1">提示: 檢查瀏覽器控制台 (F12) 以獲取詳細錯誤信息</p>
             </div>
           )}

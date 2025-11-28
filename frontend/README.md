@@ -126,7 +126,7 @@ The frontend is fully integrated with the Flask backend API:
 
 ## 🔌 Backend Integration
 
-The frontend connects to the Flask backend at `http://127.0.0.1:8000/api/v1` (hard-set to match backend CORS settings).
+The frontend connects to the Flask backend using `VITE_API_BASE_URL` environment variable (set in `.env` or build args).
 
 ### API Endpoints Used
 

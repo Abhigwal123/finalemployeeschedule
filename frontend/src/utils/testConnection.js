@@ -4,8 +4,8 @@
  */
 
 export const testDirectConnection = async () => {
-  // Hard-set API base URL to match backend CORS settings
-  const baseURL = 'http://127.0.0.1:8000/api/v1';
+  // Use environment variable - MUST be set
+  const baseURL = import.meta.env.VITE_API_BASE_URL;
   const healthURL = `${baseURL}/health`;
   
   console.log('🔍 Testing direct connection to:', healthURL);

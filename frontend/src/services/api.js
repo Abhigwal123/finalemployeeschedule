@@ -1,7 +1,9 @@
 import axios from "axios";
 
-// Hard-set API base URL to match backend CORS settings
-const API_BASE_URL = "http://127.0.0.1:8000/api/v1";
+// Use environment variable - MUST be set in .env or build args
+// For Docker with nginx proxy: VITE_API_BASE_URL=/api/v1
+// For direct backend: VITE_API_BASE_URL=http://82.165.209.92:8081/api/v1
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 // Configure axios defaults
 axios.defaults.withCredentials = true;

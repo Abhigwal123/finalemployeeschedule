@@ -64,8 +64,9 @@ export default function OrganizationMaintenance() {
       setError('');
       
       console.log('[TRACE] Frontend: Loading tenants data');
-      // Hard-set API base URL to match backend CORS settings
-      console.log('[TRACE] Frontend: API base URL: http://127.0.0.1:8000/api/v1');
+      // Use environment variable - MUST be set
+      const apiBaseURL = import.meta.env.VITE_API_BASE_URL;
+      console.log('[TRACE] Frontend: API base URL:', apiBaseURL);
       
       const response = await tenantService.getAll(1, 100);
       console.log('[TRACE] Frontend: Tenants response type:', typeof response);

@@ -47,8 +47,8 @@ export const checkBackendHealth = async () => {
 };
 
 export const testBackendConnection = async () => {
-  // Hard-set API base URL to match backend CORS settings
-  const baseURL = 'http://127.0.0.1:8000/api/v1';
+  // Use environment variable - MUST be set
+  const baseURL = import.meta.env.VITE_API_BASE_URL;
   console.log('Testing backend connection at:', baseURL);
   
   try {

@@ -65,8 +65,8 @@ export const employeeService = {
 
     try {
       console.log(`[TRACE] Frontend: Fetching schedule for month=${month}`);
-      // Hard-set API base URL to match backend CORS settings
-      const apiBaseURL = 'http://127.0.0.1:8000/api/v1';
+      // Use environment variable - MUST be set
+      const apiBaseURL = import.meta.env.VITE_API_BASE_URL;
       console.log(`[TRACE] Frontend: API base URL: ${apiBaseURL}`);
       console.log(`[TRACE] Final API URL called: ${apiBaseURL}/schedule/my`);
       console.log(`[DEBUG] Token check: token exists=${!!token}, length=${token ? token.length : 0}`);

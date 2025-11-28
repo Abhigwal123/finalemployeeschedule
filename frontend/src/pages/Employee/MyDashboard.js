@@ -375,7 +375,7 @@ export default function MyDashboard() {
         
         if (!scheduleErr.response) {
           // Network error - backend not reachable
-          errorMsg = '無法連接到伺服器，請確認後端服務是否正在運行 (http://127.0.0.1:8000)';
+          errorMsg = '無法連接到伺服器，請確認後端服務是否正在運行';
           console.error('[TRACE] Frontend: Network/CORS error - backend may not be running');
         } else if (scheduleErr.response.status === 500) {
           const errorData = scheduleErr.response.data;
@@ -542,8 +542,9 @@ export default function MyDashboard() {
       }
       
       // Fallback to sync status endpoint
-      // Hard-set API base URL to match backend CORS settings
-      const response = await fetch(`http://127.0.0.1:8000/api/v1/admin/sync/status`, {
+      // Use environment variable - MUST be set
+      const apiBaseURL = import.meta.env.VITE_API_BASE_URL;
+      const response = await fetch(`${apiBaseURL}/admin/sync/status`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
