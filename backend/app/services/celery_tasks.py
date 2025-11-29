@@ -7,7 +7,7 @@ from pathlib import Path
 
 from flask import current_app, has_app_context
 
-from .google_io import get_default_input_url, get_default_output_url
+# Removed: get_default_input_url, get_default_output_url - no longer using hardcoded defaults
 
 
 def _load_phase1_run_schedule():
@@ -121,12 +121,12 @@ def bind_celery(celery_app):
                 mod = importlib.import_module("run_refactored")
                 run_schedule_task = getattr(mod, "run_schedule_task")
 
-                # Derive defaults from config when not provided
-                cfg_in = flask_app_instance.config.get("GOOGLE_INPUT_URL")
-                cfg_out = flask_app_instance.config.get("GOOGLE_OUTPUT_URL")
-                sheet_id = flask_app_instance.config.get("GOOGLE_SHEET_ID")
-                in_url = input_url or cfg_in or get_default_input_url(sheet_id)
-                out_url = output_url or cfg_out or get_default_output_url(sheet_id)
+                # Use ENV variables only - no hardcoded defaults
+                import os
+                cfg_in = flask_app_instance.config.get("GOOGLE_INPUT_URL") or os.getenv("GOOGLE_INPUT_URL")
+                cfg_out = flask_app_instance.config.get("GOOGLE_OUTPUT_URL") or os.getenv("GOOGLE_OUTPUT_URL")
+                in_url = input_url or cfg_in
+                out_url = output_url or cfg_out
 
                 # Execute Phase 1 with Google Sheets mapping
                 creds_path = flask_app_instance.config.get("GOOGLE_APPLICATION_CREDENTIALS", "service-account-creds.json")
@@ -275,19 +275,21 @@ def register_schedule_execution_task(celery_app):
 
 
 def register_periodic_tasks(celery_app):
-    """Register periodic tasks (including daily midnight auto-run)."""
+    """Register periodic tasks (daily tasks only - minute-based tasks removed)."""
     try:
         from celery.schedules import crontab
     except Exception:
         return
 
-    enable_test_tasks = bool(celery_app.conf.get("enable_test_tasks", False))
-
+    # REMOVED: Minute-based periodic tasks
+    # - trigger_sheet_run (every 5 minutes) - REMOVED
+    # - auto_sync_employee_data (every 5 minutes) - REMOVED
+    # - test_2min_auto_schedule (every 2 minutes) - REMOVED
+    # - ensure_schedule_auto_sync (every 10 minutes) - REMOVED (in google_sync.py)
+    # - sync_all_sheets_metadata (every 5 minutes) - REMOVED (in google_sync.py)
+    
+    # KEPT: Daily tasks only
     beat_schedule_definition = {
-        'auto-run-schedule-5m': {
-            'task': 'trigger_sheet_run',
-            'schedule': 300.0,
-        },
         'daily-run-all-schedules-midnight': {
             'task': 'daily_run_all_schedules',
             'schedule': crontab(minute=0, hour=0),
@@ -296,40 +298,17 @@ def register_periodic_tasks(celery_app):
             'task': 'refresh_google_sheets_data',
             'schedule': crontab(minute=0, hour=1),
         },
-        'auto-sync-employee-ids-every-5-mins': {
-            'task': 'auto_sync_employee_data',
-            'schedule': crontab(minute="*/5"),
-        },
         'daily-sync-all-schedules-2am': {
             'task': 'daily_sync_all_schedules',
             'schedule': crontab(minute=0, hour=2),
         },
     }
 
-    if enable_test_tasks:
-        beat_schedule_definition['test-2min-auto-schedule'] = {
-            'task': 'test_2min_auto_schedule',
-            'schedule': 120.0,
-        }
-
     # Store schedule definition for inspection (used by diagnostics/test script)
     celery_app.conf.beat_schedule = beat_schedule_definition
 
     @celery_app.on_after_finalize.connect
     def setup_periodic_tasks(sender, **kwargs):
-        if enable_test_tasks:
-            # TEST: 2-minute auto-run for testing Celery Beat and worker execution
-            sender.add_periodic_task(
-                beat_schedule_definition['test-2min-auto-schedule']['schedule'],
-                test_2min_auto_schedule.s(),
-                name="test-2min-auto-schedule",
-            )
-        # Lightweight liveness run every 5 minutes (noop default runner)
-        sender.add_periodic_task(
-            beat_schedule_definition['auto-run-schedule-5m']['schedule'],
-            trigger_sheet_run.s(),
-            name="auto-run-schedule-5m",
-        )
         # Daily auto-run at midnight (server local time)
         sender.add_periodic_task(
             beat_schedule_definition['daily-run-all-schedules-midnight']['schedule'],
@@ -341,12 +320,6 @@ def register_periodic_tasks(celery_app):
             beat_schedule_definition['daily-refresh-google-sheets']['schedule'],
             refresh_google_sheets_data.s(),
             name="daily-refresh-google-sheets",
-        )
-        # Auto-sync Employee IDs every 5 minutes from Google Sheets
-        sender.add_periodic_task(
-            beat_schedule_definition['auto-sync-employee-ids-every-5-mins']['schedule'],
-            auto_sync_employee_data.s(),
-            name="auto-sync-employee-ids-every-5-mins",
         )
         # Daily sync of schedule data at 2 AM (after schedules run at midnight)
         # This ensures data is synced to DB even if sync after execution fails

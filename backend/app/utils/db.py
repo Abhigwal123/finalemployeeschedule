@@ -111,16 +111,16 @@ def seed_schedule_definitions(app):
             logger.warning("Cannot seed schedule definitions: default tenant or department not found")
             return
         
-        # Get default URLs from config or use defaults
+        # Get URLs from config (must be set via environment variables)
         from flask import current_app
-        default_input_url = current_app.config.get(
-            "GOOGLE_INPUT_URL",
-            "https://docs.google.com/spreadsheets/d/1hEr8XD3ThVQQAFWi-Q0owRYxYnBRkwyqiOdbmp6zafg/edit?gid=0#gid=0"
-        )
-        default_output_url = current_app.config.get(
-            "GOOGLE_OUTPUT_URL",
-            "https://docs.google.com/spreadsheets/d/1Imm6TJDWsoVXpf0ykMrPj4rGPfP1noagBdgoZc5Hhxg/edit?usp=sharing"
-        )
+        import os
+        default_input_url = current_app.config.get("GOOGLE_INPUT_URL") or os.getenv("GOOGLE_INPUT_URL")
+        default_output_url = current_app.config.get("GOOGLE_OUTPUT_URL") or os.getenv("GOOGLE_OUTPUT_URL")
+        
+        # Skip seeding if URLs are not configured
+        if not default_input_url or not default_output_url:
+            logger.warning("Cannot seed schedule definitions: GOOGLE_INPUT_URL or GOOGLE_OUTPUT_URL not set")
+            return
         
         # Create default schedule definition
         schedule_def = ScheduleDefinition(

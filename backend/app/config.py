@@ -91,14 +91,9 @@ class Config:
         "GOOGLE_APPLICATION_CREDENTIALS",
         DEFAULT_GOOGLE_CREDENTIALS_PATH
     )
-    GOOGLE_INPUT_URL = os.getenv(
-        "GOOGLE_INPUT_URL",
-        "https://docs.google.com/spreadsheets/d/1hEr8XD3ThVQQAFWi-Q0owRYxYnBRkwyqiOdbmp6zafg/edit?gid=0#gid=0",
-    )
-    GOOGLE_OUTPUT_URL = os.getenv(
-        "GOOGLE_OUTPUT_URL",
-        "https://docs.google.com/spreadsheets/d/16K1AyhmOWWW1pDbWEIOyNB5td32sXxqsKCyO06pjUSw/edit?gid=0#gid=0",
-    )
+    # Google Sheets URLs - MUST be set via environment variables (no hardcoded defaults)
+    GOOGLE_INPUT_URL = os.getenv("GOOGLE_INPUT_URL")
+    GOOGLE_OUTPUT_URL = os.getenv("GOOGLE_OUTPUT_URL")
     GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "YOUR_SHEET_ID_HERE")
     GOOGLE_INPUT_TAB = os.getenv("GOOGLE_INPUT_TAB", "Input")
     GOOGLE_OUTPUT_TAB = os.getenv("GOOGLE_OUTPUT_TAB", "Output")

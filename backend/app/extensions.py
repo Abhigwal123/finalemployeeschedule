@@ -1,6 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
+from flask_migrate import Migrate
 
 
 # Core extensions singletons
@@ -10,6 +11,7 @@ from flask_cors import CORS
 db = SQLAlchemy()
 jwt = JWTManager()
 cors = CORS()
+migrate = Migrate()
 
 # Ensure absolute imports like "import app.extensions" resolve to this same module.
 # Without this alias Flask-SQLAlchemy could be instantiated twice (once as

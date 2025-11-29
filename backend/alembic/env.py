@@ -9,17 +9,29 @@ from alembic import context
 import os
 import sys
 
-# Add the app directory to Python path
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+# Get the backend directory (parent of alembic/)
+backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Get the project root (parent of backend/)
+project_root = os.path.dirname(backend_dir)
+
+# Add project root to Python path so we can import 'backend.app'
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# Also add backend directory for refactor.* imports if needed
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
 
 # Import Flask app and get metadata from Flask-SQLAlchemy
 from backend.app import create_app
 from backend.app.extensions import db
 
-# Create Flask app to initialize models
-app = create_app()
+# Create Flask app WITHOUT Celery for migrations (faster, no Redis dependency)
+# This creates the app in the current process context
+app = create_app(with_celery=False)
 
 # Import all models to register them with SQLAlchemy
+# This ensures all models are registered with Flask-SQLAlchemy metadata
 from backend.app.models import (
     Tenant, User, Department, ScheduleDefinition,
     SchedulePermission, ScheduleJobLog, EmployeeMapping,
@@ -45,8 +57,23 @@ if config.config_file_name is not None:
 
 
 def get_url():
-    """Get database URL from environment or config"""
-    return os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
+    """Get database URL from Flask app config, environment variable, or alembic.ini"""
+    # First try to get from Flask app config (most reliable)
+    try:
+        with app.app_context():
+            flask_db_url = app.config.get('SQLALCHEMY_DATABASE_URI')
+            if flask_db_url:
+                return flask_db_url
+    except Exception:
+        pass
+    
+    # Fall back to environment variable
+    env_db_url = os.getenv("DATABASE_URL")
+    if env_db_url:
+        return env_db_url
+    
+    # Finally fall back to alembic.ini
+    return config.get_main_option("sqlalchemy.url")
 
 
 def run_migrations_offline() -> None:
@@ -83,8 +110,29 @@ def run_migrations_online() -> None:
 
     In this scenario we need to create an Engine
     and associate a connection with the context.
+    
+    Uses Flask-SQLAlchemy's engine for consistency with the app.
 
     """
+    # Try to use Flask-SQLAlchemy's engine (preferred for consistency)
+    try:
+        with app.app_context():
+            connectable = db.engine
+            with connectable.connect() as connection:
+                context.configure(
+                    connection=connection, 
+                    target_metadata=target_metadata
+                )
+                with context.begin_transaction():
+                    context.run_migrations()
+            return
+    except Exception as e:
+        # Fallback to creating engine from config if Flask engine fails
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Could not use Flask-SQLAlchemy engine, falling back to config: {e}")
+    
+    # Fallback: Create engine from configuration
     configuration = config.get_section(config.config_ini_section)
     url = get_url()
     configuration["sqlalchemy.url"] = url

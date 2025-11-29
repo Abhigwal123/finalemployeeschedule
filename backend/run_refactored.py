@@ -107,9 +107,7 @@ _path_logger.info(f"[RUN_REFACTORED] Refactor package location: {refactor_dir}")
 _path_logger.info(f"[RUN_REFACTORED] sys.path[0:3]: {sys.path[0:3]}")
 _path_logger.info(f"[RUN_REFACTORED] ✅ Refactor in sys.path - 'from refactor.*' imports should work")
 
-# Default configuration - URLs are preset in the file
-DEFAULT_INPUT_SHEET_URL = "https://docs.google.com/spreadsheets/d/1hEr8XD3ThVQQAFWi-Q0owRYxYnBRkwyqiOdbmp6zafg/edit?gid=0#gid=0"
-DEFAULT_OUTPUT_SHEET_URL = "https://docs.google.com/spreadsheets/d/16K1AyhmOWWW1pDbWEIOyNB5td32sXxqsKCyO06pjUSw/edit?gid=0#gid=0"
+# Google Sheets URLs - MUST be set via environment variables (no hardcoded defaults)
 # Credentials are in project root, not backend/
 DEFAULT_CREDENTIALS_PATH = os.path.join(project_root, "service-account-creds.json")
 os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", DEFAULT_CREDENTIALS_PATH)
@@ -624,8 +622,8 @@ def main():
                        help=f"Input data source type (default: google_sheets)")
     parser.add_argument("--input-file", help="Input Excel file path (for excel input)")
     parser.add_argument("--input-sheet-url", 
-                       default=DEFAULT_INPUT_SHEET_URL,
-                       help=f"Input Google Sheet URL (default: preset URL in file)")
+                       default=None,
+                       help="Input Google Sheet URL (required - set via GOOGLE_INPUT_URL env var or this argument)")
     parser.add_argument("--credentials", default=DEFAULT_CREDENTIALS_PATH,
                        help=f"Path to Google service account credentials file (default: {DEFAULT_CREDENTIALS_PATH})")
     
@@ -635,8 +633,8 @@ def main():
                        help="Output destination type (default: google_sheets)")
     parser.add_argument("--output-file", help="Output Excel file path (for excel output)")
     parser.add_argument("--output-sheet-url", 
-                       default=DEFAULT_OUTPUT_SHEET_URL,
-                       help="Output Google Sheet URL (default: preset URL in file)")
+                       default=None,
+                       help="Output Google Sheet URL (required - set via GOOGLE_OUTPUT_URL env var or this argument)")
     
     # Scheduling parameters
     parser.add_argument("--time-limit", type=float, default=90.0,
@@ -654,8 +652,11 @@ def main():
             sys.exit(1)
         input_config = {"file_path": args.input_file}
     elif args.input_type == 'google_sheets':
-        # Use default URL if not provided
-        input_sheet_url = args.input_sheet_url or DEFAULT_INPUT_SHEET_URL
+        # Use ENV variable or argument - no hardcoded defaults
+        input_sheet_url = args.input_sheet_url or os.getenv("GOOGLE_INPUT_URL")
+        if not input_sheet_url:
+            print("Error: --input-sheet-url is required or set GOOGLE_INPUT_URL environment variable")
+            sys.exit(1)
         print(f"Using input Google Sheet URL: {input_sheet_url}")
         input_config = {
             "spreadsheet_url": input_sheet_url,
@@ -669,8 +670,11 @@ def main():
             sys.exit(1)
         output_config = {"output_path": args.output_file}
     elif args.output_type == 'google_sheets':
-        # Use default URL if not provided
-        output_sheet_url = args.output_sheet_url or DEFAULT_OUTPUT_SHEET_URL
+        # Use ENV variable or argument - no hardcoded defaults
+        output_sheet_url = args.output_sheet_url or os.getenv("GOOGLE_OUTPUT_URL")
+        if not output_sheet_url:
+            print("Error: --output-sheet-url is required or set GOOGLE_OUTPUT_URL environment variable")
+            sys.exit(1)
         print(f"Using output Google Sheet URL: {output_sheet_url}")
         output_config = {
             "spreadsheet_url": output_sheet_url,

@@ -6,7 +6,7 @@ from flask import Flask, jsonify, request, make_response, Response, current_app
 from .config import Config
 import os
 import pymysql
-from .extensions import db, jwt, cors
+from .extensions import db, jwt, cors, migrate
 from .utils.logger import configure_logging
 from .utils.cors import get_request_origin, apply_cors_headers as apply_env_cors_headers
 
@@ -88,21 +88,26 @@ def create_app(config_object: type[Config] | None = None, *, with_celery: bool =
     configure_logging()
 
     # Load environment variables from .env if present
-    # Try to load from project root first (for consistency with Docker Compose)
-    # Then fall back to current directory
+    # PROJECT ROOT .env is authoritative - load it first
     # --- FIXED ENV LOADER (PLACE THIS IN create_app BEFORE app = Flask()) ---
     import pathlib
     from dotenv import load_dotenv
 
     backend_dir = pathlib.Path(__file__).parent.parent        # backend/
-    backend_env = backend_dir / ".env"                       # backend/.env
+    project_root = backend_dir.parent                          # Project root
+    project_env = project_root / ".env"                       # PROJECT_ROOT/.env
+    backend_env = backend_dir / ".env"                         # backend/.env
 
-    if backend_env.exists():
+    # Load PROJECT_ROOT/.env first (authoritative)
+    if project_env.exists():
+        print(f"[ENV] Loaded PROJECT_ROOT/.env: {project_env}")
+        load_dotenv(project_env, override=True)
+    elif backend_env.exists():
         print(f"[ENV] Loaded backend/.env: {backend_env}")
         load_dotenv(backend_env)
     else:
-        print(f"[ENV WARNING] backend/.env NOT FOUND → CORS WILL BREAK")
-        load_dotenv()   # fallback
+        print(f"[ENV WARNING] No .env file found in PROJECT_ROOT or backend/ → Google Sheets URLs must be set via environment")
+        load_dotenv()   # fallback to current directory
 
 
     app = Flask(__name__)
@@ -143,12 +148,13 @@ def create_app(config_object: type[Config] | None = None, *, with_celery: bool =
     print(f"[DIAGNOSTIC] SQLALCHEMY_DATABASE_URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
     print(f"[DIAGNOSTIC] Flask working directory: {os.getcwd()}")
 
-    # Fallbacks to ensure Celery uses Redis and Google URLs are present
+    # Fallbacks to ensure Celery uses Redis
     # Use Redis database 0 for broker and database 1 for result backend
     app.config.setdefault("CELERY_BROKER_URL", os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"))
     app.config.setdefault("CELERY_RESULT_BACKEND", os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1"))
-    app.config.setdefault("GOOGLE_INPUT_URL", os.getenv("GOOGLE_INPUT_URL", "https://docs.google.com/spreadsheets/d/1hEr8XD3ThVQQAFWi-Q0owRYxYnBRkwyqiOdbmp6zafg/edit?gid=0#gid=0"))
-    app.config.setdefault("GOOGLE_OUTPUT_URL", os.getenv("GOOGLE_OUTPUT_URL", "https://docs.google.com/spreadsheets/d/1Imm6TJDWsoVXpf0ykMrPj4rGPfP1noagBdgoZc5Hhxg/edit?usp=sharing"))
+    # Google Sheets URLs - MUST be set via environment variables (no hardcoded defaults)
+    app.config["GOOGLE_INPUT_URL"] = os.getenv("GOOGLE_INPUT_URL")
+    app.config["GOOGLE_OUTPUT_URL"] = os.getenv("GOOGLE_OUTPUT_URL")
     app.config.setdefault("GOOGLE_APPLICATION_CREDENTIALS", os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "service-account-creds.json"))
 
     
@@ -344,6 +350,7 @@ def create_app(config_object: type[Config] | None = None, *, with_celery: bool =
     logger.info(f"[DB INIT] Initializing Flask-SQLAlchemy (will read engine_options from config)")
     logger.info(f"[DB INIT] Engine options in config: {list(engine_options.keys())}")
     db.init_app(app)
+    migrate.init_app(app, db)
     jwt.init_app(app)
     
     # CRITICAL: Configure JWT error handlers to add CORS headers
